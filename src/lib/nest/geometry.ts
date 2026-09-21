@@ -1,9 +1,9 @@
-import type { AABB, Point, Pose, Sheet, Triangle } from "./types.ts";
+﻿import type { AABB, Point, Pose, Sheet, Triangle } from "./types.ts";
 
-/** Tolerância linear, mm. */
+/** TolerÃ¢ncia linear, mm. */
 export const EPS = 1e-6;
 
-/** Área mínima aceita para um triângulo não degenerado, mm². */
+/** Ãrea mÃ­nima aceita para um triÃ¢ngulo nÃ£o degenerado, mmÂ². */
 export const MIN_AREA = 0.01;
 
 export function point(x: number, y: number): Point {
@@ -48,20 +48,20 @@ export function normalizeDeg(deg: number): number {
   return wrapped < 0 ? wrapped + 360 : wrapped;
 }
 
-/** Matriz de rotação 2D anti-horária. */
+/** Matriz de rotaÃ§Ã£o 2D anti-horÃ¡ria. */
 export function rotationMatrix(deg: number): { c: number; s: number } {
   const r = degToRad(deg);
   return { c: Math.cos(r), s: Math.sin(r) };
 }
 
-/** Rotaciona `p` em torno de `pivot` (padrão: origem). */
+/** Rotaciona `p` em torno de `pivot` (padrÃ£o: origem). */
 export function rotate(p: Point, deg: number, pivot: Point = { x: 0, y: 0 }): Point {
   const { c, s } = rotationMatrix(deg);
   const q = sub(p, pivot);
   return add({ x: q.x * c - q.y * s, y: q.x * s + q.y * c }, pivot);
 }
 
-/** p' = R(θ) p + t */
+/** p' = R(Î¸) p + t */
 export function applyPose(p: Point, pose: Pose): Point {
   return add(rotate(p, pose.rotationDeg), { x: pose.x, y: pose.y });
 }
@@ -71,7 +71,7 @@ export function applyPoseAll(verts: readonly Point[], pose: Pose): Point[] {
 }
 
 /**
- * Área com sinal (shoelace). Positiva = CCW, negativa = CW.
+ * Ãrea com sinal (shoelace). Positiva = CCW, negativa = CW.
  */
 export function signedArea(verts: readonly Point[]): number {
   let a = 0;
@@ -96,7 +96,7 @@ export function isDegenerate(verts: readonly Point[]): boolean {
   return area(verts) < MIN_AREA;
 }
 
-/** Número de vértices reflexos (ângulo interno > 180°) em polígono CCW. */
+/** NÃºmero de vÃ©rtices reflexos (Ã¢ngulo interno > 180Â°) em polÃ­gono CCW. */
 export function reflexVertexCount(poly: readonly Point[]): number {
   const n = poly.length;
   if (n < 3) return 0;
@@ -111,14 +111,14 @@ export function reflexVertexCount(poly: readonly Point[]): number {
   return reflex;
 }
 
-/** Chevron / seta: um único recorte. Tesela por translação (mesma orientação), não pelo par 180°. */
+/** Chevron / seta: um Ãºnico recorte. Tesela por translaÃ§Ã£o (mesma orientaÃ§Ã£o), nÃ£o pelo par 180Â°. */
 export function isChevronLike(poly: readonly Point[]): boolean {
   return poly.length >= 5 && poly.length <= 8 && reflexVertexCount(poly) === 1;
 }
 
 /**
- * Asa-delta / triângulo de lados suaves: convexo, um único ápice, área
- * próxima do triângulo dos três extremos. Tesela no par 180° ▽△.
+ * Asa-delta / triÃ¢ngulo de lados suaves: convexo, um Ãºnico Ã¡pice, Ã¡rea
+ * prÃ³xima do triÃ¢ngulo dos trÃªs extremos. Tesela no par 180Â° â–½â–³.
  */
 export function isDeltaLike(poly: readonly Point[]): boolean {
   if (poly.length < 5 || poly.length > 16) return false;
@@ -188,7 +188,7 @@ export function aabbHeight(b: AABB): number {
   return b.maxY - b.minY;
 }
 
-/** Distância entre caixas (0 se se tocam ou sobrepõem). Limite inferior da distância dos polígonos. */
+/** DistÃ¢ncia entre caixas (0 se se tocam ou sobrepÃµem). Limite inferior da distÃ¢ncia dos polÃ­gonos. */
 export function aabbSeparation(a: AABB, b: AABB): number {
   const dx = a.minX > b.maxX ? a.minX - b.maxX : b.minX > a.maxX ? b.minX - a.maxX : 0;
   const dy = a.minY > b.maxY ? a.minY - b.maxY : b.minY > a.maxY ? b.minY - a.maxY : 0;
@@ -198,8 +198,8 @@ export function aabbSeparation(a: AABB, b: AABB): number {
 }
 
 /**
- * Centróide de um polígono. Para triângulo coincide com a média dos vértices,
- * mas usamos a fórmula geral (já precisamos dela no Passo 3).
+ * CentrÃ³ide de um polÃ­gono. Para triÃ¢ngulo coincide com a mÃ©dia dos vÃ©rtices,
+ * mas usamos a fÃ³rmula geral (jÃ¡ precisamos dela no Passo 3).
  */
 export function centroid(verts: readonly Point[]): Point {
   const a = signedArea(verts);
@@ -226,13 +226,13 @@ export function centroid(verts: readonly Point[]): Point {
   return { x: cx / (6 * a), y: cy / (6 * a) };
 }
 
-/** Garante winding CCW invertendo B↔C (preserva o vértice A). */
+/** Garante winding CCW invertendo Bâ†”C (preserva o vÃ©rtice A). */
 export function ensureCcw(tri: Triangle): Triangle {
   if (signedArea(tri) >= 0) return [tri[0], tri[1], tri[2]];
   return [tri[0], tri[2], tri[1]];
 }
 
-/** Polígono CCW com AABB no canto inferior esquerdo. */
+/** PolÃ­gono CCW com AABB no canto inferior esquerdo. */
 export function convexHull(points: readonly Point[]): Point[] {
   const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   if (pts.length <= 1) return pts.map((p) => ({ x: p.x, y: p.y }));
@@ -258,7 +258,7 @@ export function convexHull(points: readonly Point[]): Point[] {
   return [...lower, ...upper];
 }
 
-/** Polígono CCW com AABB no canto inferior esquerdo. */
+/** PolÃ­gono CCW com AABB no canto inferior esquerdo. */
 export function canonicalize(verts: readonly Point[]): Point[] {
   if (verts.length === 0) return [];
   const copy = verts.map((p) => ({ x: p.x, y: p.y }));
@@ -268,8 +268,8 @@ export function canonicalize(verts: readonly Point[]): Point[] {
 }
 
 /**
- * Frame local canônico: CCW e translação para que o canto inferior esquerdo
- * da AABB fique em (0, 0). A origem local é esse canto — no Passo 3 o
+ * Frame local canÃ´nico: CCW e translaÃ§Ã£o para que o canto inferior esquerdo
+ * da AABB fique em (0, 0). A origem local Ã© esse canto â€” no Passo 3 o
  * Bottom-Left posiciona exatamente essa origem.
  */
 export function canonicalizeTriangle(tri: Triangle): Triangle {
@@ -302,7 +302,7 @@ export function sheetAabb(sheet: Sheet): AABB {
   return { minX: 0, minY: 0, maxX: sheet.width, maxY: sheet.length };
 }
 
-/** Recuo interno da chapa. Se o recuo esgota a área, max < min. */
+/** Recuo interno da chapa. Se o recuo esgota a Ã¡rea, max < min. */
 export function insetAabb(sheet: Sheet, inset: number): AABB {
   const m = Math.max(0, inset);
   return { minX: m, minY: m, maxX: sheet.width - m, maxY: sheet.length - m };
@@ -317,7 +317,7 @@ export function isInsideAabb(verts: readonly Point[], box: AABB, eps = EPS): boo
 }
 
 /**
- * Diagnóstico do Passo 1: a peça está inteira na chapa (com borda opcional)?
+ * DiagnÃ³stico do Passo 1: a peÃ§a estÃ¡ inteira na chapa (com borda opcional)?
  */
 export function isInsideSheet(
   worldVerts: readonly Point[],
@@ -325,7 +325,67 @@ export function isInsideSheet(
   eps = EPS,
   margin = 0,
 ): boolean {
-  return isInsideAabb(worldVerts, insetAabb(sheet, margin), eps);
+  // Chapa retangular: preserva exatamente a valida??o original.
+  if (sheet.shape !== "circle") {
+    return isInsideAabb(worldVerts, insetAabb(sheet, margin), eps);
+  }
+
+  const diameter = sheet.diameter ?? Math.min(sheet.width, sheet.length);
+  const radius = diameter / 2;
+  const center = {
+    x: diameter / 2,
+    y: diameter / 2,
+  };
+
+  const usableRadius = radius;
+
+  if (usableRadius <= eps || worldVerts.length === 0) {
+    return false;
+  }
+
+  const radiusSq = usableRadius * usableRadius;
+
+  // Todos os v?rtices precisam estar dentro do disco.
+  for (const p of worldVerts) {
+    const dx = p.x - center.x;
+    const dy = p.y - center.y;
+
+    if (dx * dx + dy * dy > radiusSq + eps) {
+      return false;
+    }
+  }
+
+  // Tamb?m verifica cada segmento da pe?a.
+  // Isso evita que uma aresta atravesse a circunfer?ncia
+  // mesmo que seus v?rtices estejam dentro dela.
+  const n = worldVerts.length;
+
+  if (n >= 2) {
+    for (let i = 0; i < n; i++) {
+      const a = worldVerts[i]!;
+      const b = worldVerts[(i + 1) % n]!;
+
+      const ab = sub(b, a);
+      const abLenSq = dot(ab, ab);
+
+      if (abLenSq <= EPS * EPS) continue;
+
+      const t = Math.max(
+        0,
+        Math.min(1, dot(sub(center, a), ab) / abLenSq),
+      );
+
+      const closest = add(a, scale(ab, t));
+      const dx = closest.x - center.x;
+      const dy = closest.y - center.y;
+
+      if (dx * dx + dy * dy > radiusSq + eps) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /** Incentro e inraio. r = A / s. */
@@ -346,7 +406,7 @@ export function incenter(tri: Triangle): { center: Point; radius: number } {
 }
 
 /**
- * Offset paralelo: o triângulo permanece semelhante, centrado no incentro.
+ * Offset paralelo: o triÃ¢ngulo permanece semelhante, centrado no incentro.
  * d > 0 expande (slot da folga laser); d < 0 contrai.
  */
 export function inflateTriangle(tri: Triangle, distance: number): Triangle {
@@ -363,8 +423,8 @@ export function inflateTriangle(tri: Triangle, distance: number): Triangle {
 }
 
 /**
- * Offset paralelo de polígono convexo CCW. d > 0 expande, d < 0 contrai.
- * Cada aresta corre na normal exterior — a folga laser fica constante.
+ * Offset paralelo de polÃ­gono convexo CCW. d > 0 expande, d < 0 contrai.
+ * Cada aresta corre na normal exterior â€” a folga laser fica constante.
  */
 export function offsetConvex(poly: readonly Point[], distance: number): Point[] {
   const n = poly.length;
@@ -408,7 +468,7 @@ export function distPointToSegment(p: Point, a: Point, b: Point): number {
   return hypot(sub(p, add(a, scale(ab, t))));
 }
 
-/** Distância mínima entre polígonos (0 se os interiores se sobrepõem). */
+/** DistÃ¢ncia mÃ­nima entre polÃ­gonos (0 se os interiores se sobrepÃµem). */
 export function minPolygonDistance(a: readonly Point[], b: readonly Point[]): number {
   if (interiorsOverlap(a, b, 1e-7)) return 0;
   let min = Infinity;
@@ -454,7 +514,7 @@ function projectOn(verts: readonly Point[], axis: Point): { min: number; max: nu
 }
 
 /**
- * Ponto estritamente no interior (não na fronteira).
+ * Ponto estritamente no interior (nÃ£o na fronteira).
  */
 export function pointInPolygonInterior(p: Point, poly: readonly Point[], eps = 1e-7): boolean {
   const n = poly.length;
@@ -488,10 +548,10 @@ function properSegmentIntersect(a: Point, b: Point, c: Point, d: Point, eps = 1e
 }
 
 /**
- * Sobreposição de interiores. SAT rejeita rápido (e é exato no convexo);
- * polígonos côncavos confirmam com ponto-em-polígono e cruzamento de arestas
- * — o SAT sozinho gera falso positivo no chevron e bloqueia o encaixe 180°.
- * Arestas compartilhadas não contam.
+ * SobreposiÃ§Ã£o de interiores. SAT rejeita rÃ¡pido (e Ã© exato no convexo);
+ * polÃ­gonos cÃ´ncavos confirmam com ponto-em-polÃ­gono e cruzamento de arestas
+ * â€” o SAT sozinho gera falso positivo no chevron e bloqueia o encaixe 180Â°.
+ * Arestas compartilhadas nÃ£o contam.
  */
 export function interiorsOverlap(a: readonly Point[], b: readonly Point[], eps = 1e-4): boolean {
   for (const axis of [...edgeAxes(a), ...edgeAxes(b)]) {
@@ -519,16 +579,17 @@ export function interiorsOverlap(a: readonly Point[], b: readonly Point[], eps =
 }
 
 export function formatMm(n: number, digits = 2): string {
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "â€”";
   const v = Number(n.toFixed(digits));
   return Number.isInteger(v) ? String(v) : v.toFixed(digits);
 }
 
 export function formatArea(mm2: number): string {
-  if (!Number.isFinite(mm2)) return "—";
+  if (!Number.isFinite(mm2)) return "â€”";
   const fmt = (n: number, digits: number) =>
     n.toLocaleString("pt-BR", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
-  if (mm2 >= 1_000_000) return `${fmt(mm2 / 1_000_000, 3)} m²`;
-  if (mm2 >= 100) return `${fmt(mm2 / 100, 1)} cm²`;
-  return `${fmt(mm2, 2)} mm²`;
+  if (mm2 >= 1_000_000) return `${fmt(mm2 / 1_000_000, 3)} mÂ²`;
+  if (mm2 >= 100) return `${fmt(mm2 / 100, 1)} cmÂ²`;
+  return `${fmt(mm2, 2)} mmÂ²`;
 }
+

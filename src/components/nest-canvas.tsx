@@ -110,6 +110,29 @@ function drawSheet(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   const h = origin.y - topRight.y;
   const lip = 5;
 
+  if (sheet.shape === "circle") {
+    const diameter = sheet.diameter ?? Math.min(sheet.width, sheet.length);
+    const radius = (diameter * cam.scale) / 2;
+    const center = toScreen(cam, diameter / 2, diameter / 2);
+
+    ctx.fillStyle = C.sheetLip;
+    ctx.beginPath();
+    ctx.arc(center.x + lip, center.y + lip, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = C.sheet;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(236,234,228,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(0, radius - 0.5), 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+
   ctx.fillStyle = C.sheetLip;
   ctx.beginPath();
   ctx.moveTo(origin.x, origin.y);
@@ -118,7 +141,6 @@ function drawSheet(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   ctx.lineTo(origin.x + w + lip, origin.y - h + lip);
   ctx.lineTo(origin.x + w, origin.y - h);
   ctx.lineTo(origin.x + w, origin.y);
-  ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = C.sheet;
@@ -128,9 +150,60 @@ function drawSheet(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   ctx.lineWidth = 1;
   ctx.strokeRect(origin.x + 0.5, origin.y - h + 0.5, w - 1, h - 1);
 }
-
 function drawKeepout(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet, margin: number) {
   if (margin <= 0) return;
+
+  const px = margin * cam.scale;
+
+  if (sheet.shape === "circle") {
+    const diameter = sheet.diameter ?? Math.min(sheet.width, sheet.length);
+    const radius = (diameter * cam.scale) / 2;
+    const innerRadius = Math.max(0, radius - px);
+    const center = toScreen(cam, diameter / 2, diameter / 2);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    ctx.arc(center.x, center.y, innerRadius, 0, Math.PI * 2, true);
+    ctx.clip("evenodd");
+    ctx.fillStyle = C.keepout;
+    ctx.fill();
+    ctx.restore();
+
+    if (innerRadius > 0.5) {
+      ctx.strokeStyle = C.keepoutLine;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, innerRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (px < 12) return;
+
+    const label = formatMm(margin);
+    ctx.fillStyle = C.ink;
+    ctx.strokeStyle = C.dimLine;
+    ctx.lineWidth = 1;
+    ctx.font = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const bottomOuter = toScreen(cam, diameter / 2, 0);
+    const bottomInner = toScreen(cam, diameter / 2, margin);
+    ctx.beginPath();
+    ctx.moveTo(bottomOuter.x, bottomOuter.y);
+    ctx.lineTo(bottomInner.x, bottomInner.y);
+    ctx.stroke();
+    ctx.fillText(
+      label,
+      (bottomOuter.x + bottomInner.x) / 2 + 14,
+      (bottomOuter.y + bottomInner.y) / 2,
+    );
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    return;
+  }
 
   const origin = toScreen(cam, 0, 0);
   const topRight = toScreen(cam, sheet.width, sheet.length);
@@ -144,7 +217,6 @@ function drawKeepout(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet, m
   const innerTr = toScreen(cam, margin + innerW, margin + innerH);
   const iw = innerTr.x - innerBl.x;
   const ih = innerBl.y - innerTr.y;
-  const px = margin * cam.scale;
 
   ctx.save();
   ctx.beginPath();

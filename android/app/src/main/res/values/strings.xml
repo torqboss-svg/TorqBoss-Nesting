@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TorqBoss Nesting</string>
+    <string name="title_activity_main">TorqBoss Nesting</string>
+    <string name="package_name">com.torqboss.nesting</string>
+    <string name="custom_url_scheme">com.torqboss.nesting</string>
+</resources>

@@ -3,7 +3,7 @@ import { o as require_jsx_runtime, s as require_react } from "../_libs/@radix-ui
 import { _ as useRouter, f as createRouter, g as createRootRoute, h as createFileRoute, l as Scripts, m as lazyRouteComponent, p as Outlet, u as HeadContent } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as TriangleAlert } from "../_libs/lucide-react.mjs";
 import { a as union, i as string, n as number, r as object, t as literal } from "../_libs/zod.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/router-DKz9rmnb.js
+//#region node_modules/.nitro/vite/services/ssr/assets/router-BtgsjPGM.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 var __defProp = Object.defineProperty;
@@ -385,8 +385,11 @@ var Route$1 = createRootRoute({
 		})]
 	})
 });
-var $$splitComponentImporter = () => import("./routes-07jrakb7.mjs");
-var rootRouteChildren = { IndexRoute: createFileRoute("/")({ component: lazyRouteComponent($$splitComponentImporter, "component") }).update({
+var $$splitComponentImporter = () => import("./routes-BECtOcRw.mjs");
+var rootRouteChildren = { IndexRoute: createFileRoute("/")({
+	ssr: false,
+	component: lazyRouteComponent($$splitComponentImporter, "component")
+}).update({
 	id: "/",
 	path: "/",
 	getParentRoute: () => Route$1

@@ -1,0 +1,28 @@
+warning: in the working copy of 'vite.config.ts', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/vite.config.ts b/vite.config.ts[m
+[1mindex f0aa67dd..529af54d 100644[m
+[1m--- a/vite.config.ts[m
+[1m+++ b/vite.config.ts[m
+[36m@@ -166,7 +166,16 @@[m [mexport default defineConfig(({ command, isPreview }) => ({[m
+     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.[m
+     grokPwaPlugin(),[m
+     tailwindcss(),[m
+[31m-    tanstackStart(),[m
+[32m+[m[32m    tanstackStart({[m
+[32m+[m[32m      spa: {[m
+[32m+[m[32m        enabled: true,[m
+[32m+[m[32m        maskPath: "/",[m
+[32m+[m[32m        prerender: {[m
+[32m+[m[32m          enabled: true,[m
+[32m+[m[32m          outputPath: "/_shell",[m
+[32m+[m[32m        },[m
+[32m+[m[32m      },[m
+[32m+[m[32m    }),[m
+     ...(command === "build" || isPreview[m
+       ? [[m
+           nitro({[m
+[36m@@ -181,3 +190,4 @@[m [mexport default defineConfig(({ command, isPreview }) => ({[m
+     viteReact(),[m
+   ],[m
+ }));[m
+[41m+[m

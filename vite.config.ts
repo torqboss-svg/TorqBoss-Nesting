@@ -166,7 +166,16 @@ export default defineConfig(({ command, isPreview }) => ({
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart({
+      spa: {
+        enabled: true,
+        maskPath: "/",
+        prerender: {
+          enabled: true,
+          outputPath: "/_shell",
+        },
+      },
+    }),
     ...(command === "build" || isPreview
       ? [
           nitro({
@@ -181,3 +190,4 @@ export default defineConfig(({ command, isPreview }) => ({
     viteReact(),
   ],
 }));
+

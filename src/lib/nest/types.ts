@@ -29,11 +29,15 @@ export type AABB = {
 };
 
 export type Sheet = {
-  /** Largura da chapa no eixo X, mm. */
+  /** Forma f?sica da chapa. */
+  shape?: "rectangle" | "circle";
+  /** Largura da chapa no eixo X, mm. Mantida para compatibilidade do nesting. */
   width: number;
-  /** Comprimento da chapa no eixo Y, mm. */
+  /** Comprimento da chapa no eixo Y, mm. Mantido para compatibilidade do nesting. */
   length: number;
-  /** Espessura no eixo Z, mm. Piso da folga laser entre peças. */
+  /** Di?metro da chapa circular, mm. */
+  diameter?: number;
+  /** Espessura no eixo Z, mm. Piso da folga laser entre pe?as. */
   thickness: number;
 };
 

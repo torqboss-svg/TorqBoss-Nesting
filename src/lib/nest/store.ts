@@ -23,6 +23,7 @@ export const MAX_JOBS = 8;
 export { MAX_PLATES };
 
 export const DEFAULT_SHEET: Sheet = {
+  shape: "rectangle",
   width: 2000,
   length: 1250,
   thickness: 10,

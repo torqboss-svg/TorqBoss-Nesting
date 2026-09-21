@@ -113,27 +113,80 @@ export function ControlPanel() {
           que não cabe segue na próxima.
         </p>
         <div className="grid grid-cols-3 gap-2">
-          <MmField
-            id="sheet-w"
-            label="Largura · X"
-            value={sheet.width}
-            min={1}
-            onChange={(width) => setSheet({ width })}
-          />
-          <MmField
-            id="sheet-l"
-            label="Comprimento · Y"
-            value={sheet.length}
-            min={1}
-            onChange={(length) => setSheet({ length })}
-          />
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground">
+              Forma da chapa
+            </label>
+            <select
+              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+              value={sheet.shape}
+              onChange={(e) => {
+                const shape = e.target.value as "rectangle" | "circle";
+
+                if (shape === "circle") {
+                  const diameter =
+                    sheet.diameter ?? Math.min(sheet.width, sheet.length);
+
+                  setSheet({
+                    shape,
+                    diameter,
+                    width: diameter,
+                    length: diameter,
+                  });
+                } else {
+                  setSheet({
+                    shape,
+                    width: sheet.width || 2000,
+                    length: sheet.length || 1250,
+                  });
+                }
+              }}
+            >
+              <option value="rectangle">Retangular</option>
+              <option value="circle">Circular</option>
+            </select>
+          </div>
+
+          {sheet.shape === "circle" ? (
+            <MmField
+              id="sheet-diameter"
+              label="Di?metro"
+              value={sheet.diameter ?? Math.min(sheet.width, sheet.length)}
+              min={1}
+              onChange={(diameter) =>
+                setSheet({
+                  diameter,
+                  width: diameter,
+                  length: diameter,
+                })
+              }
+            />
+          ) : (
+            <>
+              <MmField
+                id="sheet-w"
+                label="Largura ? X"
+                value={sheet.width}
+                min={1}
+                onChange={(width) => setSheet({ width })}
+              />
+              <MmField
+                id="sheet-l"
+                label="Comprimento ? Y"
+                value={sheet.length}
+                min={1}
+                onChange={(length) => setSheet({ length })}
+              />
+            </>
+          )}
+
           <MmField
             id="sheet-t"
-            label="Espessura · Z"
+            label="Espessura ? Z"
             value={sheet.thickness}
             min={0}
             onChange={(thickness) => setSheet({ thickness })}
-            hint="Piso da folga entre peças."
+            hint="Piso da folga entre pe?as."
           />
         </div>
         <div className="grid grid-cols-3 gap-2">
