@@ -40,7 +40,9 @@ export function Workbench() {
           <NestCanvas />
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-2 p-3 lg:p-4">
             <div className="rounded-md bg-bg/80 px-2.5 py-1.5 font-mono text-xs tabular-nums text-muted shadow-[var(--shadow-border)]">
-              {formatMm(sheet.width)} × {formatMm(sheet.length)} × {formatMm(sheet.thickness)} mm
+              {sheet.kind === "disc"
+                ? `Ø ${formatMm(sheet.width)} × ${formatMm(sheet.thickness)} mm`
+                : `${formatMm(sheet.width)} × ${formatMm(sheet.length)} × ${formatMm(sheet.thickness)} mm`}
               {nest.plateCount > 1 ? ` · chapa ${nest.plateIndex + 1}/${nest.plateCount}` : ""}
               {margin > 0 ? ` · borda ${formatMm(margin)}` : ""}
               {gap > 0 ? ` · folga ${formatMm(gap)}` : ""}

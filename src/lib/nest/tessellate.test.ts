@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { aabbOf, interiorsOverlap, isInsideSheet, minPolygonDistance } from "./geometry.ts";
-import { buildPiece, flangePresetPatch } from "./shapes.ts";
+import { buildPiece, discFromDiameter, flangePresetPatch, squareFromSide } from "./shapes.ts";
 import type { PieceInput } from "./types.ts";
 import {
   maxSheetMargin,
@@ -330,5 +330,129 @@ describe("mixed jobs on one sheet", () => {
       assert.ok(nearest >= 9.9, `${b.piece.name} gap ${nearest}`);
       assert.ok(nearest < 25, `${b.piece.name} sits ${nearest.toFixed(1)} mm away`);
     }
+  });
+});
+
+describe("circular remnant sheet", () => {
+  it("fits 5 discs of 180 mm in a Ø 700 mm plate", () => {
+    const plate = { kind: "disc" as const, width: 700, length: 700, thickness: 10 };
+    const piece = discFromDiameter(180);
+    const result = tessellate(piece, plate, 5, { family: "hex", gap: 10, margin: 15 });
+    assert.equal(result.placed, 5);
+    for (const p of result.placements) {
+      assert.equal(isInsideSheet(p.world, plate, 1e-6, 15), true);
+    }
+    for (let i = 0; i < result.placements.length; i++) {
+      for (let j = i + 1; j < result.placements.length; j++) {
+        assert.equal(interiorsOverlap(result.placements[i]!.world, result.placements[j]!.world), false);
+        assert.ok(minPolygonDistance(result.placements[i]!.world, result.placements[j]!.world) >= 9.9);
+      }
+    }
+  });
+
+  it("does not place a piece larger than the inner circle", () => {
+    const plate = { kind: "disc" as const, width: 200, length: 200, thickness: 10 };
+    const piece = discFromDiameter(180);
+    const result = tessellate(piece, plate, 3, { family: "hex", gap: 10, margin: 15 });
+    assert.equal(result.placed, 0);
+  });
+
+  it("shifts the hex lattice to use the leftover rim on a Ø 1250 mm plate", () => {
+    const plate = { kind: "disc" as const, width: 1250, length: 1250, thickness: 10 };
+    const piece = discFromDiameter(280);
+    const t0 = performance.now();
+    const result = tessellate(piece, plate, 20, { family: "hex", gap: 10, margin: 15 });
+    const ms = performance.now() - t0;
+    assert.ok(result.placed > 7, `placed ${result.placed}, expected more than the centered 1+6`);
+    assert.ok(ms < 250, `rim search took ${ms.toFixed(0)} ms`);
+    for (const p of result.placements) {
+      assert.equal(isInsideSheet(p.world, plate, 1e-6, 15), true);
+    }
+    for (let i = 0; i < result.placements.length; i++) {
+      for (let j = i + 1; j < result.placements.length; j++) {
+        assert.equal(interiorsOverlap(result.placements[i]!.world, result.placements[j]!.world), false);
+        assert.ok(minPolygonDistance(result.placements[i]!.world, result.placements[j]!.world) >= 9.9);
+      }
+    }
+  });
+
+  it("fits 4 right triangles 500×500 in a Ø 1250 mm plate", () => {
+    const plate = { kind: "disc" as const, width: 1250, length: 1250, thickness: 10 };
+    const tri = triangleFromLegs(500, 500);
+    const t0 = performance.now();
+    const result = tessellate(tri, plate, 4, { family: "pair180", gap: 10, margin: 15 });
+    const ms = performance.now() - t0;
+    assert.equal(result.placed, 4, `placed ${result.placed}`);
+    assert.ok(ms < 250, `disc pair search took ${ms.toFixed(0)} ms`);
+    const c = 1250 / 2;
+    for (const p of result.placements) {
+      assert.equal(isInsideSheet(p.world, plate, 1e-6, 15), true);
+      const hub = Math.min(...p.world.map((v) => Math.hypot(v.x - c, v.y - c)));
+      assert.ok(hub < 20, `right angle sits ${hub.toFixed(1)} mm from center`);
+    }
+    const maxR = Math.max(
+      ...result.placements.flatMap((p) => p.world.map((v) => Math.hypot(v.x - c, v.y - c))),
+    );
+    assert.ok(maxR < 530, `pinwheel circumradius ${maxR.toFixed(1)} should be ~500 mm`);
+    for (let i = 0; i < result.placements.length; i++) {
+      for (let j = i + 1; j < result.placements.length; j++) {
+        assert.equal(interiorsOverlap(result.placements[i]!.world, result.placements[j]!.world), false);
+        assert.ok(minPolygonDistance(result.placements[i]!.world, result.placements[j]!.world) >= 9.9);
+      }
+    }
+  });
+
+  it("pinwheel of 4 catetos 500 mm still fits a Ø 1050 mm remnant", () => {
+    const plate = { kind: "disc" as const, width: 1050, length: 1050, thickness: 10 };
+    const tri = triangleFromLegs(500, 500);
+    const result = tessellate(tri, plate, 4, { family: "pair180", gap: 10, margin: 15 });
+    assert.equal(result.placed, 4, `placed ${result.placed}, diameter arrangement needs ~1170 mm`);
+    const c = 1050 / 2;
+    for (const p of result.placements) {
+      assert.equal(isInsideSheet(p.world, plate, 1e-6, 15), true);
+      const hub = Math.min(...p.world.map((v) => Math.hypot(v.x - c, v.y - c)));
+      assert.ok(hub < 20, `right angle sits ${hub.toFixed(1)} mm from center`);
+    }
+  });
+
+  it("fits 2 squares of 500 mm along the diameter of a Ø 1250 mm plate", () => {
+    const plate = { kind: "disc" as const, width: 1250, length: 1250, thickness: 10 };
+    const sq = squareFromSide(500);
+    const result = tessellate(sq, plate, 4, { family: "grid", gap: 10, margin: 15 });
+    assert.equal(result.placed, 2, `placed ${result.placed}, 2×2 corners were outside the circle`);
+    for (const p of result.placements) {
+      assert.equal(isInsideSheet(p.world, plate, 1e-6, 15), true);
+    }
+    assert.ok(minPolygonDistance(result.placements[0]!.world, result.placements[1]!.world) >= 9.9);
+  });
+
+  it("rect sheets still nest the same with kind omitted", () => {
+    const a = tessellate(triangleFromBaseHeight(10, 8), SHEET, 8);
+    const b = tessellate(triangleFromBaseHeight(10, 8), { ...SHEET, kind: "rect" }, 8);
+    assert.equal(a.placed, b.placed);
+    assert.equal(a.placements[0]?.pose.x, b.placements[0]?.pose.x);
+  });
+
+  it("numbers disc pieces 0..n-1 like the rectangular sheet", () => {
+    const plate = { kind: "disc" as const, width: 1250, length: 1250, thickness: 10 };
+    const result = tessellate(triangleFromLegs(200, 200), plate, 8, {
+      family: "pair180",
+      gap: 10,
+      margin: 15,
+    });
+    assert.ok(result.placed >= 4);
+    assert.deepEqual(
+      result.placements.map((p) => p.index),
+      result.placements.map((_, i) => i),
+    );
+    const hex = tessellate(discFromDiameter(180), { kind: "disc", width: 700, length: 700, thickness: 10 }, 5, {
+      family: "hex",
+      gap: 10,
+      margin: 15,
+    });
+    assert.deepEqual(
+      hex.placements.map((p) => p.index),
+      hex.placements.map((_, i) => i),
+    );
   });
 });

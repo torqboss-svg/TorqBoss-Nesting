@@ -1,4 +1,4 @@
-﻿// @ts-nocheck â€” restored from cache; public API unchanged
+// @ts-nocheck — restored from cache; public API unchanged
 import type {
   AABB,
   NestClearance,
@@ -12,13 +12,14 @@ import type {
   Triangle,
 } from "./types.ts";
 
-import { aabbHeight, aabbOf, aabbSeparation, aabbUsable, aabbWidth, applyPoseAll, area, canonicalize, canonicalizeTriangle, centroid, convexHull, cross, inflateTriangle, insetAabb, interiorsOverlap, isChevronLike, isDeltaLike, isDegenerate, isInsideAabb, isInsideSheet, minPolygonDistance, offsetConvex, rotate, signedArea, sub } from "./geometry.ts";
+import { aabbHeight, aabbOf, aabbSeparation, aabbUsable, aabbWidth, applyPoseAll, area, canonicalize, canonicalizeTriangle, centroid, convexHull, cross, inflateTriangle, insetAabb, interiorsOverlap, isChevronLike, isDeltaLike, isDegenerate, isInsideAabb, isInsideCircle, minPolygonDistance, offsetConvex, rotate, signedArea, sub } from "./geometry.ts";
 export const MAX_QUANTITY = 200;
-/** Recuo mÃ¡ximo: metade do menor lado, menos 1 mm. */
+/** Recuo máximo: metade do menor lado, menos 1 mm. */
 export function maxSheetMargin(sheet: Sheet) {
+	if (sheet.kind === "disc") return Math.max(0, Math.max(sheet.width, 0) / 2 - 1);
 	return Math.max(0, Math.min(sheet.width, sheet.length) / 2 - 1);
 }
-/** â–½ se dois vÃ©rtices definem o topo; â–³ se o Ã¡pice Ã© o Ãºnico ponto alto. */
+/** ▽ se dois vértices definem o topo; △ se o ápice é o único ponto alto. */
 export function pointingOf(world: readonly Point[]) {
 	const ys = world.map((p) => p.y);
 	const maxY = Math.max(...ys);
@@ -91,8 +92,8 @@ function aabbLattice(box, mid) {
 	};
 }
 /**
-* Lattice of the 180Â° pair around an edge. Vectors come from the zonogon
-* (parallelogram or hexagon) of the pair â€” not from the AABB, which left
+* Lattice of the 180° pair around an edge. Vectors come from the zonogon
+* (parallelogram or hexagon) of the pair — not from the AABB, which left
 * unused corridors between trapezoids and irregulars.
 */
 function makeLatticeFromPair(poly, edge, gap = 0) {
@@ -248,9 +249,9 @@ export function rowBands(placements: readonly NestedPiece[]) {
 	return rows;
 }
 function glyphFor(p) {
-	if (p.pack === "hex") return "â—";
-	if (p.pack === "grid") return "â– ";
-	return p.pointing === "down" ? "â–½" : "â–³";
+	if (p.pack === "hex") return "●";
+	if (p.pack === "grid") return "■";
+	return p.pointing === "down" ? "▽" : "△";
 }
 function rowGlyphs(row) {
 	return row.map(glyphFor).join("");
@@ -304,7 +305,7 @@ function poseMatching(local, world, rotationDeg) {
 function mapHoles(holes, pose) {
 	return holes.map((h) => applyPoseAll(h, pose));
 }
-function fillSlots(slot, bounds, lattice, limit, sheet) {
+function fillSlots(slot, bounds, lattice, limit) {
 	const len1 = Math.hypot(lattice.v1.x, lattice.v1.y) || 1;
 	const len2 = Math.hypot(lattice.v2.x, lattice.v2.y) || 1;
 	const span = Math.min(48, Math.ceil(Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) / Math.min(len1, len2)) + 6);
@@ -314,7 +315,7 @@ function fillSlots(slot, bounds, lattice, limit, sheet) {
 		for (let m = -span; m <= span; m++) {
 			for (const pose of posesForCell(lattice, m, n)) {
 				const world = applyPoseAll(slot, pose);
-				if (!isInsideSheet(world, sheet)) continue;
+				if (!isInsideAabb(world, bounds)) continue;
 				const key = centroidKey(world);
 				if (seen.has(key)) continue;
 				seen.add(key);
@@ -381,12 +382,12 @@ function packLatticeTri(tri, sheet, requested, gap, alreadySeeded = false) {
 	let bestScore = -Infinity;
 	for (let edge = 0; edge < 3; edge++) {
 		const lattice = makeLatticeTri(slot, edge);
-		const poses = fillSlots(slot, bounds, lattice, requested, sheet);
+		const poses = fillSlots(slot, bounds, lattice, requested);
 		const placed = [];
 		for (const slotPose of poses) {
 			const worldSlot = applyPoseAll(slot, slotPose);
 			const world = inflateTriangle(worldSlot, -half);
-			if (!isInsideSheet(world, sheet)) continue;
+			if (!isInsideAabb(world, bounds)) continue;
 			placed.push({
 				index: 0,
 				pose: poseMatching(seed, world, slotPose.rotationDeg),
@@ -612,7 +613,7 @@ function packConvexNfp(poly, sheet, requested, gap, rotations, obstacles = []) {
 					x: p.x + t.x,
 					y: p.y + t.y
 				}));
-				if (!isInsideSheet(world, sheet)) continue;
+				if (!isInsideAabb(world, bounds)) continue;
 				let ok = true;
 				const wb = aabbOf(world);
 				for (const q of placed) {
@@ -788,8 +789,8 @@ function lattice2x2Clear(poly, v1, v2) {
  * Translation tessellation for chevron-like concave pieces. Two copies of
  * the same orientation tile by sliding the notch onto the tip (pitch = half
  * AABB); inflating by gap/2 first makes that pitch hug the laser gap.
- * 180Â° pairing of the convex hull left a 280 mm cell and a huge empty
- * corridor â€” this lattice closes it.
+ * 180° pairing of the convex hull left a 280 mm cell and a huge empty
+ * corridor — this lattice closes it.
  */
 function packTranslationLattice(poly, sheet, requested, gap) {
 	const bounds = insetAabb(sheet, 0);
@@ -823,7 +824,7 @@ function packTranslationLattice(poly, sheet, requested, gap) {
 					x: p.x + t.x,
 					y: p.y + t.y
 				}));
-				if (!isInsideSheet(world, sheet)) continue;
+				if (!isInsideAabb(world, bounds)) continue;
 				const key = centroidKey(world);
 				if (seen.has(key)) continue;
 				seen.add(key);
@@ -924,7 +925,7 @@ function mapSeedOntoTriangle(seed, worldT, rotationDeg) {
 	}));
 }
 /**
- * Delta wing: ride the triangle checkerboard (â–½â–³ at 180Â°) and push the
+ * Delta wing: ride the triangle checkerboard (▽△ at 180°) and push the
  * lattice by the curve's outward bulge so the smooth sides kiss at `gap`
  * instead of overlapping.
  */
@@ -940,7 +941,7 @@ function packDeltaPair(poly, sheet, requested, gap) {
 		const placed = [];
 		for (const p of packed) {
 			const world = mapSeedOntoTriangle(seed, p.world, p.pose.rotationDeg);
-			if (!isInsideSheet(world, sheet)) continue;
+			if (!isInsideAabb(world, bounds)) continue;
 			placed.push({
 				index: 0,
 				pose: poseMatching(seed, world, p.pose.rotationDeg),
@@ -1010,11 +1011,11 @@ function packLatticeN(poly, sheet, requested, gap) {
 		for (let edge = 0; edge < seed.length; edge++) {
 			const lattice = makeLatticeFromPair(seed, edge, gap);
 			if (!lattice) continue;
-			const poses = fillSlots(seed, bounds, lattice, requested, sheet);
+			const poses = fillSlots(seed, bounds, lattice, requested);
 			const placed = [];
 			for (const pose of poses) {
 				const world = applyPoseAll(seed, pose);
-				if (!isInsideSheet(world, sheet)) continue;
+				if (!isInsideAabb(world, bounds)) continue;
 				placed.push({
 					index: 0,
 					pose: poseMatching(seed, world, pose.rotationDeg),
@@ -1042,12 +1043,12 @@ function packLatticeN(poly, sheet, requested, gap) {
 			for (const edge of longestEdgeIndices(slot, 6)) {
 				const lattice = makeLatticeFromPair(slot, edge);
 				if (!lattice) continue;
-				const poses = fillSlots(slot, bounds, lattice, requested, sheet);
+				const poses = fillSlots(slot, bounds, lattice, requested);
 				const placed = [];
 				for (const pose of poses) {
 					const worldSlot = applyPoseAll(slot, pose);
 					const world = offsetConvex(worldSlot, -half);
-					if (world.length < 3 || !isInsideSheet(world, sheet)) continue;
+					if (world.length < 3 || !isInsideAabb(world, bounds)) continue;
 					placed.push({
 						index: 0,
 						pose: poseMatching(seed, world, pose.rotationDeg),
@@ -1104,477 +1105,55 @@ function packLatticeN(poly, sheet, requested, gap) {
 		grid
 	], gap);
 }
-function circleWallHits(
-        nfp,
-        diameter,
-        gap,
-) {
-        const hits = [];
-        const radius = diameter / 2;
-        const center = {
-                x: radius,
-                y: radius
-        };
-
-        if (!Array.isArray(nfp) || nfp.length < 2) return hits;
-
-        /*
-         * Cada ponto do NFP representa uma poss?vel transla??o da pe?a.
-         * Procuramos os pontos em que a transla??o coloca um v?rtice/aresta
-         * do NFP sobre a circunfer?ncia da chapa.
-         *
-         * Isto ? o equivalente circular de wallHits(), sem alterar
-         * a l?gica NFP usada pela chapa retangular.
-         */
-        const addHit = (x, y) => {
-                const dx = x - center.x;
-                const dy = y - center.y;
-                const d = Math.hypot(dx, dy);
-
-                if (d < 1e-9) return;
-
-                const scale = radius / d;
-
-                hits.push({
-                        x: center.x + dx * scale,
-                        y: center.y + dy * scale
-                });
-        };
-
-        for (let i = 0; i < nfp.length; i++) {
-                const a = nfp[i];
-                const b = nfp[(i + 1) % nfp.length];
-
-                addHit(a.x, a.y);
-
-                const ab = {
-                        x: b.x - a.x,
-                        y: b.y - a.y
-                };
-
-                const A = ab.x * ab.x + ab.y * ab.y;
-                if (A < 1e-12) continue;
-
-                const ox = a.x - center.x;
-                const oy = a.y - center.y;
-
-                const B = 2 * (ox * ab.x + oy * ab.y);
-                const C =
-                        ox * ox +
-                        oy * oy -
-                        radius * radius;
-
-                const disc = B * B - 4 * A * C;
-
-                if (disc < -1e-9) continue;
-
-                const sqrtDisc = Math.sqrt(Math.max(0, disc));
-
-                const roots = [
-                        (-B - sqrtDisc) / (2 * A),
-                        (-B + sqrtDisc) / (2 * A)
-                ];
-
-                for (const t of roots) {
-                        if (t < -1e-9 || t > 1 + 1e-9) continue;
-
-                        hits.push({
-                                x: a.x + ab.x * t,
-                                y: a.y + ab.y * t
-                        });
-                }
-        }
-
-        return hits;
-}
-
-function packCircleGrid(poly, sheet, requested, gap, rotations, holes = [], obstacles = []) {
-        const diameter = sheet.diameter ?? Math.min(sheet.width, sheet.length);
-
-        // Otimiza??es exatas: apenas descartam trabalho que n?o pode gerar
-        // uma interse??o/candidato v?lido. N?o alteram a geometria do nesting.
-        const candidateKey = (p) =>
-                `${Math.round(p.x * 100) / 100}:${Math.round(p.y * 100) / 100}`;
-
-        const dedupeCandidates = (candidates) => {
-                const seen = new Set();
-                const out = [];
-
-                for (const c of candidates) {
-                        const key = candidateKey(c);
-                        if (seen.has(key)) continue;
-                        seen.add(key);
-                        out.push(c);
-                }
-
-                return out;
-        };
-
-        const boxesOverlap = (a, b, eps = 0.05) =>
-                !(
-                        a.maxX < b.minX - eps ||
-                        a.minX > b.maxX + eps ||
-                        a.maxY < b.minY - eps ||
-                        a.minY > b.maxY + eps
-                );
-        const radius = diameter / 2;
-
-        if (diameter <= 0 || poly.length < 3 || requested <= 0) {
-                return [];
-        }
-
-        const locals = rotations.map((rot) =>
-                canonicalize(
-                        applyPoseAll(poly, {
-                                x: 0,
-                                y: 0,
-                                rotationDeg: rot
-                        })
-                )
-        );
-
-        /*
-         * A primeira pe?a continua sendo colocada no centro da chapa.
-         * Depois dela, o algoritmo passa a trabalhar como o NFP retangular:
-         * NFP entre pe?as + interse??es + contato com a parede.
-         */
-        const placed = [];
-
-        const center = {
-                x: radius,
-                y: radius
-        };
-
-        let first = null;
-        let firstScore = Infinity;
-
-        for (let ri = 0; ri < locals.length; ri++) {
-                const local = locals[ri];
-                const rot = rotations[ri];
-
-                const box = aabbOf(local);
-                const localCenter = {
-                        x: (box.minX + box.maxX) / 2,
-                        y: (box.minY + box.maxY) / 2
-                };
-
-                const tx = center.x - localCenter.x;
-                const ty = center.y - localCenter.y;
-
-                const world = local.map((p) => ({
-                        x: p.x + tx,
-                        y: p.y + ty
-                }));
-
-                if (!isInsideSheet(world, sheet)) continue;
-                if (!respectsGap(world, obstacles, gap)) continue;
-
-                const score =
-                        Math.abs(
-                                ((aabbOf(world).minX + aabbOf(world).maxX) / 2) -
-                                center.x
-                        ) +
-                        Math.abs(
-                                ((aabbOf(world).minY + aabbOf(world).maxY) / 2) -
-                                center.y
-                        );
-
-                if (score < firstScore) {
-                        firstScore = score;
-                        first = {
-                                index: 0,
-                                pose: poseMatching(poly, world, rot),
-                                world,
-                                holes: mapHoles(holes, poseMatching(poly, world, rot)),
-                                pointing: pointingOf(world),
-                                pack: "pair"
-                        };
-                }
-        }
-
-        if (!first) return [];
-
-        placed.push(first);
-
-        const need = Math.max(0, gap) - 0.05;
-
-        for (let n = 1; n < requested; n++) {
-                const circleNestStart = performance.now();
-
-                let bestWorld = null;
-                let bestPose = null;
-                let bestScore = Infinity;
-
-                for (let ri = 0; ri < locals.length; ri++) {
-                        const local = locals[ri];
-                        const rot = rotations[ri];
-
-                        const candidates = [];
-                        const nfps = [];
-                        const nfpBoxes = [];
-
-                        /*
-                         * Mesmo mecanismo do packConvexNfp:
-                         * cada pe?a j? colocada gera um NFP.
-                         *
-                         * O AABB ? calculado uma ?nica vez para que possamos
-                         * eliminar pares de NFP que jamais poder?o intersectar.
-                         */
-                        for (const p of placed) {
-                                const nfp = nfpBoundary(p.world, local, gap);
-
-                                if (nfp.length < 3) continue;
-
-                                nfps.push(nfp);
-                                nfpBoxes.push(aabbOf(nfp));
-
-                                candidates.push(...nfp);
-
-                                /*
-                                 * Interse??es do NFP com a parede circular.
-                                 */
-                                candidates.push(
-                                        ...circleWallHits(nfp, diameter, gap)
-                                );
-                        }
-
-                        /*
-                         * Interse??es entre NFPs.
-                         *
-                         * Mantemos exatamente a mesma opera??o matem?tica,
-                         * mas n?o chamamos nfpIntersections() quando os AABBs
-                         * dos dois NFPs est?o separados. Nesse caso a
-                         * interse??o ? matematicamente imposs?vel.
-                         */
-                        if (placed.length < 12 && local.length <= 20) {
-                                for (let i = 0; i < nfps.length; i++) {
-                                        for (let j = i + 1; j < nfps.length; j++) {
-                                                if (
-                                                        !boxesOverlap(
-                                                                nfpBoxes[i],
-                                                                nfpBoxes[j]
-                                                        )
-                                                ) {
-                                                        continue;
-                                                }
-
-                                                candidates.push(
-                                                        ...nfpIntersections(
-                                                                nfps[i],
-                                                                nfps[j]
-                                                        )
-                                                );
-                                        }
-                                }
-                        }
-
-                        /*
-                         * Remove somente candidatos praticamente id?nticos.
-                         * N?o elimina posi??es geometricamente distintas.
-                         */
-                        const uniqueCandidates =
-                                dedupeCandidates(candidates);
-
-                        /*
-                         * Pequena prote??o contra conjuntos de NFP que
-                         * ainda n?o gerem contato ?til com a circunfer?ncia.
-                         * O ponto central ? deliberadamente evitado aqui:
-                         * a primeira pe?a j? ocupa o centro.
-                         */
-                        if (candidates.length === 0) {
-                                continue;
-                        }
-
-                        for (const t of uniqueCandidates) {
-                                const world = local.map((p) => ({
-                                        x: p.x + t.x,
-                                        y: p.y + t.y
-                                }));
-
-                                if (!isInsideSheet(world, sheet)) continue;
-                                if (!respectsGap(world, obstacles, gap)) continue;
-
-                                let ok = true;
-                                const wb = aabbOf(world);
-
-                                for (const q of placed) {
-                                        if (
-                                                aabbSeparation(
-                                                        wb,
-                                                        aabbOf(q.world)
-                                                ) >= need
-                                        ) {
-                                                continue;
-                                        }
-
-                                        if (need <= 0) {
-                                                if (
-                                                        interiorsOverlap(
-                                                                world,
-                                                                q.world
-                                                        )
-                                                ) {
-                                                        ok = false;
-                                                        break;
-                                                }
-                                        } else if (
-                                                minPolygonDistance(
-                                                        world,
-                                                        q.world
-                                                ) < need
-                                        ) {
-                                                ok = false;
-                                                break;
-                                        }
-                                }
-
-                                if (!ok) continue;
-
-                                const box = aabbOf(world);
-
-                                /*
-                                 * Score circular:
-                                 * prioriza posi??es pr?ximas ao conjunto j?
-                                 * ocupado, depois favorece avan?o para a borda.
-                                 *
-                                 * N?o usamos mais an?is/pitch fixo.
-                                 */
-                                let nearest = Infinity;
-
-                                for (const q of placed) {
-                                        nearest = Math.min(
-                                                nearest,
-                                                minPolygonDistance(
-                                                        world,
-                                                        q.world
-                                                )
-                                        );
-                                }
-
-                                const worldCenter = {
-                                        x: (box.minX + box.maxX) / 2,
-                                        y: (box.minY + box.maxY) / 2
-                                };
-
-                                const radial = Math.hypot(
-                                        worldCenter.x - center.x,
-                                        worldCenter.y - center.y
-                                );
-
-                                const score =
-                                        nearest * 1e6 +
-                                        radial * 0.01 +
-                                        box.maxY * 1e-4 +
-                                        box.minX * 1e-6;
-
-                                if (score < bestScore) {
-                                        bestScore = score;
-                                        bestWorld = world;
-                                        bestPose = poseMatching(
-                                                poly,
-                                                world,
-                                                rot
-                                        );
-                                }
-                        }
-                }
-
-                const circleNestElapsed = performance.now() - circleNestStart;
-
-                console.log(
-                        `[CircleNest] pe?a ${n + 1}/${requested} | ` +
-                        `tempo=${circleNestElapsed.toFixed(1)}ms | ` +
-                        `candidatos processados=${placed.length}`
-                );
-
-                if (!bestWorld || !bestPose) break;
-
-                placed.push({
-                        index: 0,
-                        pose: bestPose,
-                        world: bestWorld,
-                        holes: mapHoles(holes, bestPose),
-                        pointing: pointingOf(bestWorld),
-                        pack: "pair"
-                });
-        }
-
-        return placed;
-}
 function packGrid(poly, sheet, requested, gap, rotations, holes = [], obstacles = []) {
-        if (sheet.shape === "circle") {
-                return packCircleGrid(
-                        poly,
-                        sheet,
-                        requested,
-                        gap,
-                        rotations,
-                        holes,
-                        obstacles
-                );
-        }
-
-        const bounds = insetAabb(sheet, 0);
-        if (!aabbUsable(bounds)) return [];
-        let best = [];
-        let bestScore = -Infinity;
-
-        for (const rot of rotations) {
-                const rotated = canonicalize(applyPoseAll(poly, {
-                        x: 0,
-                        y: 0,
-                        rotationDeg: rot
-                }));
-
-                const box = aabbOf(rotated);
-                const pw = aabbWidth(box);
-                const ph = aabbHeight(box);
-
-                if (pw < .5 || ph < .5) continue;
-
-                const pitchX = pw + gap;
-                const pitchY = ph + gap;
-                const placed = [];
-                const cols = Math.ceil((bounds.maxX - bounds.minX) / pitchX) + 1;
-                const rows = Math.ceil((bounds.maxY - bounds.minY) / pitchY) + 1;
-
-                for (let j = 0; j < rows && placed.length < requested; j++) {
-                        for (let i = 0; i < cols && placed.length < requested; i++) {
-                                const x = i * pitchX;
-                                const y = j * pitchY;
-
-                                const world = rotated.map((p) => ({
-                                        x: p.x + x,
-                                        y: p.y + y
-                                }));
-
-                                if (!isInsideSheet(world, sheet)) continue;
-                                if (!respectsGap(world, obstacles, gap)) continue;
-
-                                const pose = poseMatching(poly, world, rot);
-
-                                placed.push({
-                                        index: 0,
-                                        pose,
-                                        world,
-                                        holes: mapHoles(holes, pose),
-                                        pointing: pointingOf(world),
-                                        pack: "grid"
-                                });
-                        }
-                }
-
-                const score = densityScore(placed);
-
-                if (score > bestScore) {
-                        bestScore = score;
-                        best = placed;
-                }
-        }
-
-        return best;
+	const bounds = insetAabb(sheet, 0);
+	if (!aabbUsable(bounds)) return [];
+	let best = [];
+	let bestScore = -Infinity;
+	for (const rot of rotations) {
+		const rotated = canonicalize(applyPoseAll(poly, {
+			x: 0,
+			y: 0,
+			rotationDeg: rot
+		}));
+		const box = aabbOf(rotated);
+		const pw = aabbWidth(box);
+		const ph = aabbHeight(box);
+		if (pw < .5 || ph < .5) continue;
+		const pitchX = pw + gap;
+		const pitchY = ph + gap;
+		const placed = [];
+		const cols = Math.ceil((bounds.maxX - bounds.minX) / pitchX) + 1;
+		const rows = Math.ceil((bounds.maxY - bounds.minY) / pitchY) + 1;
+		for (let j = 0; j < rows && placed.length < requested; j++) {
+			for (let i = 0; i < cols && placed.length < requested; i++) {
+				const x = i * pitchX;
+				const y = j * pitchY;
+				const world = rotated.map((p) => ({
+					x: p.x + x,
+					y: p.y + y
+				}));
+				if (!isInsideAabb(world, bounds)) continue;
+				if (!respectsGap(world, obstacles, gap)) continue;
+				const pose = poseMatching(poly, world, rot);
+				placed.push({
+					index: 0,
+					pose,
+					world,
+					holes: mapHoles(holes, pose),
+					pointing: pointingOf(world),
+					pack: "grid"
+				});
+			}
+		}
+		const score = densityScore(placed);
+		if (score > bestScore) {
+			bestScore = score;
+			best = placed;
+		}
+	}
+	return best;
 }
-
 function packHex(poly, sheet, requested, gap, holes = [], obstacles = []) {
 	const bounds = insetAabb(sheet, 0);
 	if (!aabbUsable(bounds)) return [];
@@ -1595,7 +1174,7 @@ function packHex(poly, sheet, requested, gap, holes = [], obstacles = []) {
 				x: p.x + x,
 				y: p.y + y
 			}));
-			if (!isInsideSheet(world, sheet)) continue;
+			if (!isInsideAabb(world, bounds)) continue;
 			if (!respectsGap(world, obstacles, gap)) continue;
 			const pose = {
 				x,
@@ -1627,17 +1206,6 @@ function pickBest(candidates) {
 	return best;
 }
 function packFamily(poly, sheet, requested, gap, family, holes, obstacles = []) {
-        if (sheet.shape === "circle") {
-                return packCircleGrid(
-                        poly,
-                        sheet,
-                        requested,
-                        gap,
-                        rotationsFor(family, poly.length),
-                        holes,
-                        obstacles
-                );
-        }
 	if (family === "hex") return packHex(poly, sheet, requested, gap, holes, obstacles);
 	if (family === "grid") {
 		const rots = [0, 90];
@@ -1688,9 +1256,9 @@ function shiftCluster(placed, dx, dy) {
 		})))
 	}));
 }
-function clusterFits(cluster, obstacles, bounds, gap, sheet) {
+function clusterFits(cluster, obstacles, bounds, gap) {
 	for (const p of cluster) {
-		if (!isInsideSheet(p.world, sheet)) return false;
+		if (!isInsideAabb(p.world, bounds)) return false;
 		if (!respectsGap(p.world, obstacles, gap)) return false;
 	}
 	return true;
@@ -1715,7 +1283,7 @@ function rotationsFor(family, n) {
 * free space until it kisses the locked pieces (distance = gap). Leftovers
 * fill the remaining pockets on the same lattice, skipping occupied cells.
 */
-function trySlideCluster(packed, obstacles, bounds, gap, sheet) {
+function trySlideCluster(packed, obstacles, bounds, gap) {
 	if (packed.length === 0) return null;
 	const box = aabbOf(packed.flatMap((p) => p.world));
 	const origin = shiftCluster(packed, -box.minX, -box.minY);
@@ -1753,7 +1321,7 @@ function trySlideCluster(packed, obstacles, bounds, gap, sheet) {
 	for (const t of cands) {
 		if (t.x < -0.05 || t.y < -0.05) continue;
 		const moved = shiftCluster(origin, t.x, t.y);
-		if (!clusterFits(moved, obstacles, bounds, gap, sheet)) continue;
+		if (!clusterFits(moved, obstacles, bounds, gap)) continue;
 		const nb = aabbOf(moved.flatMap((p) => p.world));
 		const score = nb.minY * 1_000_000 + nb.minX;
 		if (score < bestScore) {
@@ -1774,7 +1342,7 @@ function placeAroundObstacles(packed, obstacles, sheet, gap, poly, requested, fa
 	while (remaining.length > 0 && out.length < requested) {
 		let moved = null;
 		for (let n = remaining.length; n >= 1; n--) {
-			moved = trySlideCluster(remaining.slice(0, n), occupied, bounds, gap, sheet);
+			moved = trySlideCluster(remaining.slice(0, n), occupied, bounds, gap);
 			if (moved) {
 				remaining = remaining.slice(n);
 				break;
@@ -1795,6 +1363,409 @@ function placeAroundObstacles(packed, obstacles, sheet, gap, poly, requested, fa
 	], holes, occupied) : packConvexNfp(poly, sheet, rest, gap, rotationsFor(family, poly.length), occupied);
 	return [...out, ...extra].slice(0, requested);
 }
+
+function clipDisc(placed, D, margin) {
+	const c = D / 2;
+	const r = c - Math.max(0, margin);
+	if (r <= 0) return [];
+	return placed.filter((p) => isInsideCircle(p.world, c, c, r));
+}
+
+function shiftToDiscCenter(placed, D) {
+	if (!placed.length) return placed;
+	const box = aabbOf(placed.flatMap((p) => p.world));
+	const mx = (box.minX + box.maxX) / 2;
+	const my = (box.minY + box.maxY) / 2;
+	const c = D / 2;
+	return shiftCluster(placed, c - mx, c - my);
+}
+
+/** Hexágono no retalho circular: malha deslocada para ocupar a faixa da borda. */
+function packHexRings(poly, D, requested, gap, holes, margin, obstacles) {
+	const box = aabbOf(poly);
+	const pw = aabbWidth(box);
+	const ph = aabbHeight(box);
+	const pitch = Math.min(pw, ph) + gap;
+	if (pitch < 0.5 || requested <= 0) return [];
+	const pitchY = pitch * (Math.sqrt(3) / 2);
+	const c = D / 2;
+	const rIn = c - Math.max(0, margin);
+	if (rIn <= 0) return [];
+	const radMax = Math.hypot(pw, ph) / 2;
+	const span = Math.ceil((2 * rIn) / Math.min(pitch, pitchY)) + 3;
+
+	const toPieces = (hits) => {
+		hits.sort((a, b) => a.dist - b.dist || a.y - b.y || a.x - b.x);
+		return hits.slice(0, requested).map((h) => {
+			const pose = { x: h.x, y: h.y, rotationDeg: 0 };
+			return {
+				index: 0,
+				pose,
+				world: h.world,
+				holes: mapHoles(holes, pose),
+				pointing: pointingOf(h.world),
+				pack: "hex",
+			};
+		});
+	};
+
+	const fill = (ox, oy, ang) => {
+		const rad = (ang * Math.PI) / 180;
+		const ca = Math.cos(rad);
+		const sa = Math.sin(rad);
+		const v1x = pitch * ca;
+		const v1y = pitch * sa;
+		const v2x = (pitch / 2) * ca - pitchY * sa;
+		const v2y = (pitch / 2) * sa + pitchY * ca;
+		const hits = [];
+		for (let j = -span; j <= span; j++) {
+			for (let i = -span; i <= span; i++) {
+				const x = ox + i * v1x + j * v2x;
+				const y = oy + i * v1y + j * v2y;
+				const d = Math.hypot(x + pw / 2 - c, y + ph / 2 - c);
+				if (d - radMax > rIn) continue;
+				let world;
+				if (d + radMax <= rIn) {
+					world = poly.map((p) => ({ x: p.x + x, y: p.y + y }));
+				} else {
+					world = poly.map((p) => ({ x: p.x + x, y: p.y + y }));
+					if (!isInsideCircle(world, c, c, rIn)) continue;
+				}
+				if (!respectsGap(world, obstacles, gap)) continue;
+				hits.push({ x, y, world, dist: d });
+			}
+		}
+		hits.sort((a, b) => a.dist - b.dist || a.y - b.y || a.x - b.x);
+		return hits;
+	};
+
+	const scoreOf = (hits) => {
+		const take = hits.slice(0, requested);
+		let sum = 0;
+		let maxd = 0;
+		for (const h of take) {
+			sum += h.dist;
+			if (h.dist > maxd) maxd = h.dist;
+		}
+		return take.length * 1e12 - maxd * 1e6 - sum;
+	};
+
+	let bestHits = [];
+	let bestScore = -Infinity;
+	const consider = (hits) => {
+		const s = scoreOf(hits);
+		if (s > bestScore) {
+			bestScore = s;
+			bestHits = hits;
+		}
+	};
+
+	const baseX = c - pw / 2;
+	const baseY = c - ph / 2;
+	const steps = 10;
+	for (const ang of [0, 15, 30]) {
+		const rad = (ang * Math.PI) / 180;
+		const ca = Math.cos(rad);
+		const sa = Math.sin(rad);
+		const v1x = pitch * ca;
+		const v1y = pitch * sa;
+		const v2x = (pitch / 2) * ca - pitchY * sa;
+		const v2y = (pitch / 2) * sa + pitchY * ca;
+		for (let a = 0; a < steps; a++) {
+			const ua = a / steps;
+			for (let b = 0; b < steps; b++) {
+				const ub = b / steps;
+				consider(fill(baseX + ua * v1x + ub * v2x, baseY + ua * v1y + ub * v2y, ang));
+			}
+		}
+	}
+
+	return toPieces(bestHits);
+}
+
+/**
+ * Malha ▽△ / grade no retalho circular: cada célula é testada contra o
+ * círculo (não contra o quadrado circunscrito). A origem da malha percorre
+ * a célula unitária para caber o máximo na faixa da borda — o recorte do
+ * cluster centrado deixava 4 triângulos 500 mm virarem 2 num Ø 1250.
+ */
+function packLatticeRings(poly, D, requested, gap, family, holes, margin, obstacles) {
+	const c = D / 2;
+	const rIn = c - Math.max(0, margin);
+	if (rIn <= 0 || requested <= 0) return [];
+
+	const specs = [];
+	const wantPair =
+		family === "pair180" ||
+		family === "auto" ||
+		(family !== "grid" && family !== "hex" && poly.length === 3);
+	const wantGrid = family === "grid" || family === "auto";
+
+	if (wantPair) {
+		if (poly.length === 3) {
+			const half = Math.max(0, gap) / 2;
+			const seed = seedPointingDown(poly);
+			const slot = canonicalizeTriangle(inflateTriangle(seed, half));
+			for (let edge = 0; edge < 3; edge++) {
+				specs.push({ type: "tri", seed, slot, half, lattice: makeLatticeTri(slot, edge), pack: "pair" });
+			}
+		} else if (poly.length <= 20) {
+			const seed = seedPointingDown(canonicalize(poly));
+			const limit = Math.min(seed.length, 6);
+			for (let edge = 0; edge < limit; edge++) {
+				const lattice = makeLatticeFromPair(seed, edge, gap);
+				if (!lattice) continue;
+				specs.push({ type: "pair", seed, slot: seed, half: 0, lattice, pack: "pair" });
+			}
+		}
+	}
+	if (wantGrid) {
+		const rots = family === "grid" ? [0, 90] : [0, 90, 180, 270];
+		for (const rot of rots) {
+			const local = canonicalize(applyPoseAll(poly, { x: 0, y: 0, rotationDeg: rot }));
+			const box = aabbOf(local);
+			const pw = aabbWidth(box);
+			const ph = aabbHeight(box);
+			if (pw < 0.5 || ph < 0.5) continue;
+			specs.push({
+				type: "grid",
+				seed: poly,
+				local,
+				rot,
+				v1: { x: pw + gap, y: 0 },
+				v2: { x: 0, y: ph + gap },
+				pack: "grid",
+			});
+		}
+	}
+	if (specs.length === 0) return [];
+
+	const scoreOf = (hits) => {
+		const take = hits.slice(0, requested);
+		let sum = 0;
+		let maxd = 0;
+		for (const h of take) {
+			sum += h.dist;
+			if (h.dist > maxd) maxd = h.dist;
+		}
+		return take.length * 1e12 - maxd * 1e6 - sum;
+	};
+
+	let bestHits = [];
+	let bestSpec = specs[0];
+	let bestScore = -Infinity;
+
+	for (const spec of specs) {
+		const v1 = spec.type === "grid" ? spec.v1 : spec.lattice.v1;
+		const v2 = spec.type === "grid" ? spec.v2 : spec.lattice.v2;
+		const len1 = Math.hypot(v1.x, v1.y) || 1;
+		const len2 = Math.hypot(v2.x, v2.y) || 1;
+		const span = Math.min(48, Math.ceil((2 * rIn) / Math.min(len1, len2)) + 4);
+		const steps = span >= 24 ? 4 : span >= 12 ? 6 : 8;
+		const probe = spec.type === "grid" ? spec.local : spec.slot;
+		const box = aabbOf(probe);
+		const pw = aabbWidth(box);
+		const ph = aabbHeight(box);
+		const radMax = Math.hypot(pw, ph) / 2;
+
+		const fill = (ox, oy) => {
+			const hits = [];
+			const seen = new Set();
+			const accept = (world, dist, extra) => {
+				if (world.length < 3) return;
+				if (dist - radMax > rIn) return;
+				if (dist + radMax > rIn && !isInsideCircle(world, c, c, rIn)) return;
+				if (!respectsGap(world, obstacles, gap)) return;
+				const key = centroidKey(world);
+				if (seen.has(key)) return;
+				seen.add(key);
+				hits.push({ world, dist, ...extra });
+			};
+
+			if (spec.type === "grid") {
+				for (let n = -span; n <= span; n++) {
+					for (let m = -span; m <= span; m++) {
+						const x = ox + m * v1.x + n * v2.x;
+						const y = oy + m * v1.y + n * v2.y;
+						const world = spec.local.map((p) => ({ x: p.x + x, y: p.y + y }));
+						const d = Math.hypot(x + pw / 2 - c, y + ph / 2 - c);
+						accept(world, d, { x, y, rot: spec.rot });
+					}
+				}
+			} else {
+				for (let n = -span; n <= span; n++) {
+					for (let m = -span; m <= span; m++) {
+						for (const pose0 of posesForCell(spec.lattice, m, n)) {
+							const pose = { x: pose0.x + ox, y: pose0.y + oy, rotationDeg: pose0.rotationDeg };
+							const worldSlot = applyPoseAll(spec.slot, pose);
+							const wb = aabbOf(worldSlot);
+							const d = Math.hypot((wb.minX + wb.maxX) / 2 - c, (wb.minY + wb.maxY) / 2 - c);
+							const world =
+								spec.half > 1e-9 && spec.slot.length === 3
+									? inflateTriangle(worldSlot, -spec.half)
+									: applyPoseAll(spec.seed, pose);
+							accept(world, d, { pose, rot: pose.rotationDeg });
+						}
+					}
+				}
+			}
+			hits.sort((a, b) => a.dist - b.dist || (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+			return hits;
+		};
+
+		for (let a = 0; a < steps; a++) {
+			const ua = a / steps;
+			for (let b = 0; b < steps; b++) {
+				const ub = b / steps;
+				const hits = fill(ua * v1.x + ub * v2.x, ua * v1.y + ub * v2.y);
+				const s = scoreOf(hits);
+				if (s > bestScore) {
+					bestScore = s;
+					bestHits = hits;
+					bestSpec = spec;
+				}
+			}
+		}
+	}
+
+	return bestHits.slice(0, requested).map((h) => {
+		const pose = h.pose ?? poseMatching(bestSpec.seed ?? poly, h.world, h.rot ?? 0);
+		return {
+			index: 0,
+			pose,
+			world: h.world,
+			holes: mapHoles(holes, pose),
+			pointing: pointingOf(h.world),
+			pack: bestSpec.pack,
+		};
+	});
+}
+
+function interiorAngleDeg(poly, i) {
+	const n = poly.length;
+	const curr = poly[i];
+	const prev = poly[(i - 1 + n) % n];
+	const next = poly[(i + 1) % n];
+	const v1 = sub(prev, curr);
+	const v2 = sub(next, curr);
+	let a = Math.atan2(v1.y, v1.x) - Math.atan2(v2.y, v2.x);
+	if (a < 0) a += 2 * Math.PI;
+	if (a >= 2 * Math.PI - 1e-12) a = 0;
+	return (a * 180) / Math.PI;
+}
+
+function poseHubOutward(poly, hub, cx, cy, d, phiDeg) {
+	const n = poly.length;
+	const V = poly[hub];
+	const prev = poly[(hub - 1 + n) % n];
+	const next = poly[(hub + 1) % n];
+	const a = sub(prev, V);
+	const b = sub(next, V);
+	const na = Math.hypot(a.x, a.y) || 1;
+	const nb = Math.hypot(b.x, b.y) || 1;
+	const bx = a.x / na + b.x / nb;
+	const by = a.y / na + b.y / nb;
+	if (bx * bx + by * by < 1e-12) return null;
+	const phi = (phiDeg * Math.PI) / 180;
+	const rot = ((phi - Math.atan2(by, bx)) * 180) / Math.PI;
+	const target = {
+		x: cx + d * Math.cos(phi),
+		y: cy + d * Math.sin(phi),
+	};
+	const Vr = rotate(V, rot);
+	return {
+		x: target.x - Vr.x,
+		y: target.y - Vr.y,
+		rotationDeg: rot,
+	};
+}
+
+function discPackScore(placed, c) {
+	if (!placed.length) return -Infinity;
+	let sum = 0;
+	let maxd = 0;
+	for (const p of placed) {
+		for (const v of p.world) {
+			const d = Math.hypot(v.x - c, v.y - c);
+			if (d > maxd) maxd = d;
+			sum += d;
+		}
+	}
+	return placed.length * 1e12 - maxd * 1e6 - sum;
+}
+
+/**
+ * No disco, um vértice que divide 360° (90° → 4, 60° → 6) aponta para o
+ * centro. Quatro catetos 500 mm encontram os retos no miolo e o circunraio
+ * cai de ~600 mm (dois pares no diâmetro) para ~500 mm — o Ø mínimo desce.
+ */
+function packPinwheelOnDisc(poly, D, requested, gap, family, holes, margin, obstacles) {
+	if (poly.length < 3 || poly.length > 8 || requested <= 0) return [];
+	const c = D / 2;
+	const rIn = c - Math.max(0, margin);
+	if (rIn <= 0) return [];
+	const g = Math.max(0, gap);
+	const hubs = [];
+	for (let i = 0; i < poly.length; i++) {
+		const deg = interiorAngleDeg(poly, i);
+		if (deg < 28 || deg > 135) continue;
+		const fold = Math.round(360 / deg);
+		if (fold < 3 || fold > 8) continue;
+		if (Math.abs(360 / fold - deg) > 20) continue;
+		hubs.push({ index: i, deg, fold });
+	}
+	if (hubs.length === 0) return [];
+
+	let best = [];
+	let bestScore = -Infinity;
+	for (const hub of hubs) {
+		const theta = (hub.deg * Math.PI) / 180;
+		const sinHalf = Math.sin(theta / 2);
+		const d = sinHalf > 1e-6 ? g / 2 / sinHalf : g / 2;
+		const step = 360 / hub.fold;
+		const starts = hub.fold === 4 ? [45, 0, 22.5] : [0, step / 4, step / 2];
+		const nPlace = Math.min(requested, hub.fold);
+		for (const phi0 of starts) {
+			const placed = [];
+			const occupied = obstacles.slice();
+			for (let i = 0; i < hub.fold && placed.length < nPlace; i++) {
+				const pose = poseHubOutward(poly, hub.index, c, c, d, phi0 + i * step);
+				if (!pose) continue;
+				const world = applyPoseAll(poly, pose);
+				if (!isInsideCircle(world, c, c, rIn)) continue;
+				if (!respectsGap(world, occupied, g)) continue;
+				placed.push({
+					index: 0,
+					pose: poseMatching(poly, world, pose.rotationDeg),
+					world,
+					holes: mapHoles(holes, pose),
+					pointing: pointingOf(world),
+					pack: "pair",
+				});
+				occupied.push(world);
+			}
+			const s = discPackScore(placed, c);
+			if (s > bestScore) {
+				bestScore = s;
+				best = placed;
+			}
+		}
+	}
+
+	if (best.length >= requested || best.length === 0) return best.slice(0, requested);
+	const rest = packLatticeRings(
+		poly,
+		D,
+		requested - best.length,
+		gap,
+		family,
+		holes,
+		margin,
+		[...obstacles, ...best.map((p) => p.world)],
+	);
+	return [...best, ...rest].slice(0, requested);
+}
+
 export function tessellate(
   poly: readonly Point[],
   sheet: Sheet,
@@ -1806,17 +1777,52 @@ export function tessellate(
 	const gap = Math.max(0, clearance.gap ?? 0);
 	const verts = poly.length === 3 ? poly : canonicalize(poly);
 	if (requested === 0 || isDegenerate(verts)) return emptyResult(requested, margin, gap);
-	const innerDiameter = sheet.shape === "circle"
-                ? Math.max(0, (sheet.diameter ?? Math.min(sheet.width, sheet.length)) - 2 * margin)
-                : undefined;
+	const family = clearance.family ?? (verts.length === 3 ? "pair180" : "auto");
+	const holes = clearance.holes ?? [];
+	const rawObstacles = clearance.obstacles ?? [];
 
-        const inner = {
-                ...sheet,
-                width: sheet.width - 2 * margin,
-                length: sheet.length - 2 * margin,
-                diameter: innerDiameter,
-                thickness: sheet.thickness
-        };
+	if (sheet.kind === "disc") {
+		const D = Math.max(1, sheet.width);
+		if (D / 2 - margin <= 0.5) return emptyResult(requested, margin, gap);
+		let fitted;
+		if (family === "hex") {
+			fitted = packHexRings(verts, D, requested, gap, holes, margin, rawObstacles);
+		} else {
+			const lattice = clipDisc(
+				packLatticeRings(verts, D, requested, gap, family, holes, margin, rawObstacles),
+				D,
+				margin,
+			).slice(0, requested);
+			if (family === "grid") {
+				fitted = lattice;
+			} else {
+				const wheel = clipDisc(
+					packPinwheelOnDisc(verts, D, requested, gap, family, holes, margin, rawObstacles),
+					D,
+					margin,
+				).slice(0, requested);
+				const c = D / 2;
+				fitted = discPackScore(wheel, c) > discPackScore(lattice, c) ? wheel : lattice;
+			}
+		}
+		const sheetArea = Math.PI * (D / 2) * (D / 2);
+		const holeArea = holes.reduce((s, h) => s + area(h), 0);
+		const used = fitted.length * Math.max(0, area(verts) - holeArea);
+		return {
+			placements: translatePlacements(fitted, 0, 0),
+			requested,
+			placed: fitted.length,
+			utilization: sheetArea > 0 ? used / sheetArea : 0,
+			margin,
+			gap,
+		};
+	}
+
+	const inner = {
+		width: sheet.width - 2 * margin,
+		length: sheet.length - 2 * margin,
+		thickness: sheet.thickness
+	};
 	if (!aabbUsable({
 		minX: 0,
 		minY: 0,
@@ -1825,8 +1831,6 @@ export function tessellate(
 	})) {
 		return emptyResult(requested, margin, gap);
 	}
-	const family = clearance.family ?? (verts.length === 3 ? "pair180" : "auto");
-	const rawObstacles = clearance.obstacles ?? [];
 	const innerObstacles = margin === 0 ? rawObstacles : rawObstacles.map((o) => o.map((p) => ({
 		x: p.x - margin,
 		y: p.y - margin
@@ -1857,4 +1861,3 @@ export function nestHasInteriorOverlap(placements: readonly NestedPiece[]) {
 	}
 	return false;
 }
-

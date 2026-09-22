@@ -16,6 +16,7 @@ import type {
   Sheet,
   WingPresetId,
 } from "./types.ts";
+import { sheetFaceAreaMm2 } from "./sheet-mass.ts";
 import { isWingPreset } from "./wing.ts";
 
 const STORAGE_KEY = "ninho-nest-v7";
@@ -23,7 +24,7 @@ export const MAX_JOBS = 8;
 export { MAX_PLATES };
 
 export const DEFAULT_SHEET: Sheet = {
-  shape: "rectangle",
+  kind: "rect",
   width: 2000,
   length: 1250,
   thickness: 10,
@@ -186,7 +187,18 @@ export const useNestStore = create<NestState>((set) => {
     gap: DEFAULT_GAP,
     setSheet: (patch) =>
       set((s) => {
-        const sheet = { ...s.sheet, ...patch };
+        let sheet = { ...s.sheet, ...patch };
+        if ((sheet.kind ?? "rect") === "disc") {
+          const d =
+            patch.width !== undefined
+              ? patch.width
+              : patch.length !== undefined
+                ? patch.length
+                : sheet.width;
+          sheet = { ...sheet, kind: "disc", width: d, length: d };
+        } else {
+          sheet = { ...sheet, kind: "rect" };
+        }
         const plates = s.plates.map((p) => (p.id === s.activePlateId ? { ...p, sheet } : p));
         return {
           ...mirrors(plates, s.activePlateId),
@@ -332,7 +344,7 @@ export function useNestResult(): NestResult & {
   const lockedPlacements = jobs.flatMap((j) => j.placements);
   const lockedArea = jobs.reduce((s, j) => s + (j.placements[0] ? areaOfJob(j) : 0), 0);
   const liveArea = nest.placed * plan.piece.area;
-  const sheetArea = sheet.width * sheet.length;
+  const sheetArea = sheetFaceAreaMm2(sheet);
   const totalPlaced = lockedPlacements.length + nest.placed;
   const totalUtilization = sheetArea > 0 ? (lockedArea + liveArea) / sheetArea : 0;
   nest.utilization = totalUtilization;

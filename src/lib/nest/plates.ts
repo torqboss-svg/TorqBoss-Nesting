@@ -11,13 +11,23 @@ export function plateId(): string {
 export function makePlate(sheet: Sheet, jobs: NestJob[] = []): Plate {
   return {
     id: plateId(),
-    sheet: { width: sheet.width, length: sheet.length, thickness: sheet.thickness },
+    sheet: {
+      kind: sheet.kind ?? "rect",
+      width: sheet.width,
+      length: sheet.length,
+      thickness: sheet.thickness,
+    },
     jobs: [...jobs],
   };
 }
 
 export function cloneSheet(sheet: Sheet): Sheet {
-  return { width: sheet.width, length: sheet.length, thickness: sheet.thickness };
+  return {
+    kind: sheet.kind ?? "rect",
+    width: sheet.width,
+    length: sheet.length,
+    thickness: sheet.thickness,
+  };
 }
 
 export type PlannedPlate = {

@@ -1,12 +1,12 @@
 import { i as __toESM } from "../_runtime.mjs";
 import { o as require_jsx_runtime, r as Slot, s as require_react } from "../_libs/@radix-ui/react-collection+[...].mjs";
 import { a as RotateCcw, c as Lock, i as Scan, l as Download, o as Plus, r as Trash2, s as Minus, t as X } from "../_libs/lucide-react.mjs";
-import { i as APP_PRODUCT, n as APP_BRAND, r as APP_NAME } from "./router-BtgsjPGM.mjs";
+import { i as APP_PRODUCT, n as APP_BRAND, r as APP_NAME } from "./router-BWnLv_EI.mjs";
 import { n as clsx, t as cva } from "../_libs/class-variance-authority+clsx.mjs";
 import { t as twMerge } from "../_libs/tailwind-merge.mjs";
 import { i as SliderTrack, n as SliderRange, r as SliderThumb, t as Slider$1 } from "../_libs/@radix-ui/react-slider+[...].mjs";
 import { t as create } from "../_libs/zustand.mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/routes-BECtOcRw.js
+//#region node_modules/.nitro/vite/services/ssr/assets/routes-N-WQkRsR.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 function cn(...inputs) {
@@ -324,6 +324,15 @@ function canonicalizeTriangle(tri) {
 }
 function pointInAabb(p, box, eps = EPS) {
 	return p.x >= box.minX - eps && p.x <= box.maxX + eps && p.y >= box.minY - eps && p.y <= box.maxY + eps;
+}
+function isInsideCircle(verts, cx, cy, r, eps = EPS) {
+	const lim = r + eps;
+	const lim2 = lim * lim;
+	return verts.every((p) => {
+		const dx = p.x - cx;
+		const dy = p.y - cy;
+		return dx * dx + dy * dy <= lim2;
+	});
 }
 /** Recuo interno da chapa. Se o recuo esgota a área, max < min. */
 function insetAabb(sheet, inset) {
@@ -664,6 +673,7 @@ function Button({ className, variant, size, asChild, ...props }) {
 }
 /** Recuo máximo: metade do menor lado, menos 1 mm. */
 function maxSheetMargin(sheet) {
+	if (sheet.kind === "disc") return Math.max(0, Math.max(sheet.width, 0) / 2 - 1);
 	return Math.max(0, Math.min(sheet.width, sheet.length) / 2 - 1);
 }
 /** ▽ se dois vértices definem o topo; △ se o ápice é o único ponto alto. */
@@ -1979,12 +1989,453 @@ function placeAroundObstacles(packed, obstacles, sheet, gap, poly, requested, fa
 	], holes, occupied) : packConvexNfp(poly, sheet, rest, gap, rotationsFor(family, poly.length), occupied);
 	return [...out, ...extra].slice(0, requested);
 }
+function clipDisc(placed, D, margin) {
+	const c = D / 2;
+	const r = c - Math.max(0, margin);
+	if (r <= 0) return [];
+	return placed.filter((p) => isInsideCircle(p.world, c, c, r));
+}
+/** Hexágono no retalho circular: malha deslocada para ocupar a faixa da borda. */
+function packHexRings(poly, D, requested, gap, holes, margin, obstacles) {
+	const box = aabbOf(poly);
+	const pw = aabbWidth(box);
+	const ph = aabbHeight(box);
+	const pitch = Math.min(pw, ph) + gap;
+	if (pitch < .5 || requested <= 0) return [];
+	const pitchY = pitch * (Math.sqrt(3) / 2);
+	const c = D / 2;
+	const rIn = c - Math.max(0, margin);
+	if (rIn <= 0) return [];
+	const radMax = Math.hypot(pw, ph) / 2;
+	const span = Math.ceil(2 * rIn / Math.min(pitch, pitchY)) + 3;
+	const toPieces = (hits) => {
+		hits.sort((a, b) => a.dist - b.dist || a.y - b.y || a.x - b.x);
+		return hits.slice(0, requested).map((h) => {
+			const pose = {
+				x: h.x,
+				y: h.y,
+				rotationDeg: 0
+			};
+			return {
+				index: 0,
+				pose,
+				world: h.world,
+				holes: mapHoles(holes, pose),
+				pointing: pointingOf(h.world),
+				pack: "hex"
+			};
+		});
+	};
+	const fill = (ox, oy, ang) => {
+		const rad = ang * Math.PI / 180;
+		const ca = Math.cos(rad);
+		const sa = Math.sin(rad);
+		const v1x = pitch * ca;
+		const v1y = pitch * sa;
+		const v2x = pitch / 2 * ca - pitchY * sa;
+		const v2y = pitch / 2 * sa + pitchY * ca;
+		const hits = [];
+		for (let j = -span; j <= span; j++) for (let i = -span; i <= span; i++) {
+			const x = ox + i * v1x + j * v2x;
+			const y = oy + i * v1y + j * v2y;
+			const d = Math.hypot(x + pw / 2 - c, y + ph / 2 - c);
+			if (d - radMax > rIn) continue;
+			let world;
+			if (d + radMax <= rIn) world = poly.map((p) => ({
+				x: p.x + x,
+				y: p.y + y
+			}));
+			else {
+				world = poly.map((p) => ({
+					x: p.x + x,
+					y: p.y + y
+				}));
+				if (!isInsideCircle(world, c, c, rIn)) continue;
+			}
+			if (!respectsGap(world, obstacles, gap)) continue;
+			hits.push({
+				x,
+				y,
+				world,
+				dist: d
+			});
+		}
+		hits.sort((a, b) => a.dist - b.dist || a.y - b.y || a.x - b.x);
+		return hits;
+	};
+	const scoreOf = (hits) => {
+		const take = hits.slice(0, requested);
+		let sum = 0;
+		let maxd = 0;
+		for (const h of take) {
+			sum += h.dist;
+			if (h.dist > maxd) maxd = h.dist;
+		}
+		return take.length * 0xe8d4a51000 - maxd * 1e6 - sum;
+	};
+	let bestHits = [];
+	let bestScore = -Infinity;
+	const consider = (hits) => {
+		const s = scoreOf(hits);
+		if (s > bestScore) {
+			bestScore = s;
+			bestHits = hits;
+		}
+	};
+	const baseX = c - pw / 2;
+	const baseY = c - ph / 2;
+	const steps = 10;
+	for (const ang of [
+		0,
+		15,
+		30
+	]) {
+		const rad = ang * Math.PI / 180;
+		const ca = Math.cos(rad);
+		const sa = Math.sin(rad);
+		const v1x = pitch * ca;
+		const v1y = pitch * sa;
+		const v2x = pitch / 2 * ca - pitchY * sa;
+		const v2y = pitch / 2 * sa + pitchY * ca;
+		for (let a = 0; a < steps; a++) {
+			const ua = a / steps;
+			for (let b = 0; b < steps; b++) {
+				const ub = b / steps;
+				consider(fill(baseX + ua * v1x + ub * v2x, baseY + ua * v1y + ub * v2y, ang));
+			}
+		}
+	}
+	return toPieces(bestHits);
+}
+/**
+* Malha ▽△ / grade no retalho circular: cada célula é testada contra o
+* círculo (não contra o quadrado circunscrito). A origem da malha percorre
+* a célula unitária para caber o máximo na faixa da borda — o recorte do
+* cluster centrado deixava 4 triângulos 500 mm virarem 2 num Ø 1250.
+*/
+function packLatticeRings(poly, D, requested, gap, family, holes, margin, obstacles) {
+	const c = D / 2;
+	const rIn = c - Math.max(0, margin);
+	if (rIn <= 0 || requested <= 0) return [];
+	const specs = [];
+	const wantPair = family === "pair180" || family === "auto" || family !== "grid" && family !== "hex" && poly.length === 3;
+	const wantGrid = family === "grid" || family === "auto";
+	if (wantPair) {
+		if (poly.length === 3) {
+			const half = Math.max(0, gap) / 2;
+			const seed = seedPointingDown(poly);
+			const slot = canonicalizeTriangle(inflateTriangle(seed, half));
+			for (let edge = 0; edge < 3; edge++) specs.push({
+				type: "tri",
+				seed,
+				slot,
+				half,
+				lattice: makeLatticeTri(slot, edge),
+				pack: "pair"
+			});
+		} else if (poly.length <= 20) {
+			const seed = seedPointingDown(canonicalize(poly));
+			const limit = Math.min(seed.length, 6);
+			for (let edge = 0; edge < limit; edge++) {
+				const lattice = makeLatticeFromPair(seed, edge, gap);
+				if (!lattice) continue;
+				specs.push({
+					type: "pair",
+					seed,
+					slot: seed,
+					half: 0,
+					lattice,
+					pack: "pair"
+				});
+			}
+		}
+	}
+	if (wantGrid) {
+		const rots = family === "grid" ? [0, 90] : [
+			0,
+			90,
+			180,
+			270
+		];
+		for (const rot of rots) {
+			const local = canonicalize(applyPoseAll(poly, {
+				x: 0,
+				y: 0,
+				rotationDeg: rot
+			}));
+			const box = aabbOf(local);
+			const pw = aabbWidth(box);
+			const ph = aabbHeight(box);
+			if (pw < .5 || ph < .5) continue;
+			specs.push({
+				type: "grid",
+				seed: poly,
+				local,
+				rot,
+				v1: {
+					x: pw + gap,
+					y: 0
+				},
+				v2: {
+					x: 0,
+					y: ph + gap
+				},
+				pack: "grid"
+			});
+		}
+	}
+	if (specs.length === 0) return [];
+	const scoreOf = (hits) => {
+		const take = hits.slice(0, requested);
+		let sum = 0;
+		let maxd = 0;
+		for (const h of take) {
+			sum += h.dist;
+			if (h.dist > maxd) maxd = h.dist;
+		}
+		return take.length * 0xe8d4a51000 - maxd * 1e6 - sum;
+	};
+	let bestHits = [];
+	let bestSpec = specs[0];
+	let bestScore = -Infinity;
+	for (const spec of specs) {
+		const v1 = spec.type === "grid" ? spec.v1 : spec.lattice.v1;
+		const v2 = spec.type === "grid" ? spec.v2 : spec.lattice.v2;
+		const len1 = Math.hypot(v1.x, v1.y) || 1;
+		const len2 = Math.hypot(v2.x, v2.y) || 1;
+		const span = Math.min(48, Math.ceil(2 * rIn / Math.min(len1, len2)) + 4);
+		const steps = span >= 24 ? 4 : span >= 12 ? 6 : 8;
+		const box = aabbOf(spec.type === "grid" ? spec.local : spec.slot);
+		const pw = aabbWidth(box);
+		const ph = aabbHeight(box);
+		const radMax = Math.hypot(pw, ph) / 2;
+		const fill = (ox, oy) => {
+			const hits = [];
+			const seen = /* @__PURE__ */ new Set();
+			const accept = (world, dist, extra) => {
+				if (world.length < 3) return;
+				if (dist - radMax > rIn) return;
+				if (dist + radMax > rIn && !isInsideCircle(world, c, c, rIn)) return;
+				if (!respectsGap(world, obstacles, gap)) return;
+				const key = centroidKey(world);
+				if (seen.has(key)) return;
+				seen.add(key);
+				hits.push({
+					world,
+					dist,
+					...extra
+				});
+			};
+			if (spec.type === "grid") for (let n = -span; n <= span; n++) for (let m = -span; m <= span; m++) {
+				const x = ox + m * v1.x + n * v2.x;
+				const y = oy + m * v1.y + n * v2.y;
+				accept(spec.local.map((p) => ({
+					x: p.x + x,
+					y: p.y + y
+				})), Math.hypot(x + pw / 2 - c, y + ph / 2 - c), {
+					x,
+					y,
+					rot: spec.rot
+				});
+			}
+			else for (let n = -span; n <= span; n++) for (let m = -span; m <= span; m++) for (const pose0 of posesForCell(spec.lattice, m, n)) {
+				const pose = {
+					x: pose0.x + ox,
+					y: pose0.y + oy,
+					rotationDeg: pose0.rotationDeg
+				};
+				const worldSlot = applyPoseAll(spec.slot, pose);
+				const wb = aabbOf(worldSlot);
+				const d = Math.hypot((wb.minX + wb.maxX) / 2 - c, (wb.minY + wb.maxY) / 2 - c);
+				accept(spec.half > 1e-9 && spec.slot.length === 3 ? inflateTriangle(worldSlot, -spec.half) : applyPoseAll(spec.seed, pose), d, {
+					pose,
+					rot: pose.rotationDeg
+				});
+			}
+			hits.sort((a, b) => a.dist - b.dist || (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+			return hits;
+		};
+		for (let a = 0; a < steps; a++) {
+			const ua = a / steps;
+			for (let b = 0; b < steps; b++) {
+				const ub = b / steps;
+				const hits = fill(ua * v1.x + ub * v2.x, ua * v1.y + ub * v2.y);
+				const s = scoreOf(hits);
+				if (s > bestScore) {
+					bestScore = s;
+					bestHits = hits;
+					bestSpec = spec;
+				}
+			}
+		}
+	}
+	return bestHits.slice(0, requested).map((h) => {
+		const pose = h.pose ?? poseMatching(bestSpec.seed ?? poly, h.world, h.rot ?? 0);
+		return {
+			index: 0,
+			pose,
+			world: h.world,
+			holes: mapHoles(holes, pose),
+			pointing: pointingOf(h.world),
+			pack: bestSpec.pack
+		};
+	});
+}
+function interiorAngleDeg(poly, i) {
+	const n = poly.length;
+	const curr = poly[i];
+	const prev = poly[(i - 1 + n) % n];
+	const next = poly[(i + 1) % n];
+	const v1 = sub(prev, curr);
+	const v2 = sub(next, curr);
+	let a = Math.atan2(v1.y, v1.x) - Math.atan2(v2.y, v2.x);
+	if (a < 0) a += 2 * Math.PI;
+	if (a >= 2 * Math.PI - 1e-12) a = 0;
+	return a * 180 / Math.PI;
+}
+function poseHubOutward(poly, hub, cx, cy, d, phiDeg) {
+	const n = poly.length;
+	const V = poly[hub];
+	const prev = poly[(hub - 1 + n) % n];
+	const next = poly[(hub + 1) % n];
+	const a = sub(prev, V);
+	const b = sub(next, V);
+	const na = Math.hypot(a.x, a.y) || 1;
+	const nb = Math.hypot(b.x, b.y) || 1;
+	const bx = a.x / na + b.x / nb;
+	const by = a.y / na + b.y / nb;
+	if (bx * bx + by * by < 1e-12) return null;
+	const phi = phiDeg * Math.PI / 180;
+	const rot = (phi - Math.atan2(by, bx)) * 180 / Math.PI;
+	const target = {
+		x: cx + d * Math.cos(phi),
+		y: cy + d * Math.sin(phi)
+	};
+	const Vr = rotate(V, rot);
+	return {
+		x: target.x - Vr.x,
+		y: target.y - Vr.y,
+		rotationDeg: rot
+	};
+}
+function discPackScore(placed, c) {
+	if (!placed.length) return -Infinity;
+	let sum = 0;
+	let maxd = 0;
+	for (const p of placed) for (const v of p.world) {
+		const d = Math.hypot(v.x - c, v.y - c);
+		if (d > maxd) maxd = d;
+		sum += d;
+	}
+	return placed.length * 0xe8d4a51000 - maxd * 1e6 - sum;
+}
+/**
+* No disco, um vértice que divide 360° (90° → 4, 60° → 6) aponta para o
+* centro. Quatro catetos 500 mm encontram os retos no miolo e o circunraio
+* cai de ~600 mm (dois pares no diâmetro) para ~500 mm — o Ø mínimo desce.
+*/
+function packPinwheelOnDisc(poly, D, requested, gap, family, holes, margin, obstacles) {
+	if (poly.length < 3 || poly.length > 8 || requested <= 0) return [];
+	const c = D / 2;
+	const rIn = c - Math.max(0, margin);
+	if (rIn <= 0) return [];
+	const g = Math.max(0, gap);
+	const hubs = [];
+	for (let i = 0; i < poly.length; i++) {
+		const deg = interiorAngleDeg(poly, i);
+		if (deg < 28 || deg > 135) continue;
+		const fold = Math.round(360 / deg);
+		if (fold < 3 || fold > 8) continue;
+		if (Math.abs(360 / fold - deg) > 20) continue;
+		hubs.push({
+			index: i,
+			deg,
+			fold
+		});
+	}
+	if (hubs.length === 0) return [];
+	let best = [];
+	let bestScore = -Infinity;
+	for (const hub of hubs) {
+		const theta = hub.deg * Math.PI / 180;
+		const sinHalf = Math.sin(theta / 2);
+		const d = sinHalf > 1e-6 ? g / 2 / sinHalf : g / 2;
+		const step = 360 / hub.fold;
+		const starts = hub.fold === 4 ? [
+			45,
+			0,
+			22.5
+		] : [
+			0,
+			step / 4,
+			step / 2
+		];
+		const nPlace = Math.min(requested, hub.fold);
+		for (const phi0 of starts) {
+			const placed = [];
+			const occupied = obstacles.slice();
+			for (let i = 0; i < hub.fold && placed.length < nPlace; i++) {
+				const pose = poseHubOutward(poly, hub.index, c, c, d, phi0 + i * step);
+				if (!pose) continue;
+				const world = applyPoseAll(poly, pose);
+				if (!isInsideCircle(world, c, c, rIn)) continue;
+				if (!respectsGap(world, occupied, g)) continue;
+				placed.push({
+					index: 0,
+					pose: poseMatching(poly, world, pose.rotationDeg),
+					world,
+					holes: mapHoles(holes, pose),
+					pointing: pointingOf(world),
+					pack: "pair"
+				});
+				occupied.push(world);
+			}
+			const s = discPackScore(placed, c);
+			if (s > bestScore) {
+				bestScore = s;
+				best = placed;
+			}
+		}
+	}
+	if (best.length >= requested || best.length === 0) return best.slice(0, requested);
+	const rest = packLatticeRings(poly, D, requested - best.length, gap, family, holes, margin, [...obstacles, ...best.map((p) => p.world)]);
+	return [...best, ...rest].slice(0, requested);
+}
 function tessellate(poly, sheet, count, clearance = {}) {
 	const requested = Math.max(0, Math.min(200, Math.floor(count)));
 	const margin = Math.max(0, clearance.margin ?? 0);
 	const gap = Math.max(0, clearance.gap ?? 0);
 	const verts = poly.length === 3 ? poly : canonicalize(poly);
 	if (requested === 0 || isDegenerate(verts)) return emptyResult(requested, margin, gap);
+	const family = clearance.family ?? (verts.length === 3 ? "pair180" : "auto");
+	const holes = clearance.holes ?? [];
+	const rawObstacles = clearance.obstacles ?? [];
+	if (sheet.kind === "disc") {
+		const D = Math.max(1, sheet.width);
+		if (D / 2 - margin <= .5) return emptyResult(requested, margin, gap);
+		let fitted;
+		if (family === "hex") fitted = packHexRings(verts, D, requested, gap, holes, margin, rawObstacles);
+		else {
+			const lattice = clipDisc(packLatticeRings(verts, D, requested, gap, family, holes, margin, rawObstacles), D, margin).slice(0, requested);
+			if (family === "grid") fitted = lattice;
+			else {
+				const wheel = clipDisc(packPinwheelOnDisc(verts, D, requested, gap, family, holes, margin, rawObstacles), D, margin).slice(0, requested);
+				const c = D / 2;
+				fitted = discPackScore(wheel, c) > discPackScore(lattice, c) ? wheel : lattice;
+			}
+		}
+		const sheetArea = Math.PI * (D / 2) * (D / 2);
+		const holeArea = holes.reduce((s, h) => s + area(h), 0);
+		const used = fitted.length * Math.max(0, area(verts) - holeArea);
+		return {
+			placements: translatePlacements(fitted, 0, 0),
+			requested,
+			placed: fitted.length,
+			utilization: sheetArea > 0 ? used / sheetArea : 0,
+			margin,
+			gap
+		};
+	}
 	const inner = {
 		width: sheet.width - 2 * margin,
 		length: sheet.length - 2 * margin,
@@ -1996,8 +2447,6 @@ function tessellate(poly, sheet, count, clearance = {}) {
 		maxX: inner.width,
 		maxY: inner.length
 	})) return emptyResult(requested, margin, gap);
-	const family = clearance.family ?? (verts.length === 3 ? "pair180" : "auto");
-	const rawObstacles = clearance.obstacles ?? [];
 	const innerObstacles = margin === 0 ? rawObstacles : rawObstacles.map((o) => o.map((p) => ({
 		x: p.x - margin,
 		y: p.y - margin
@@ -2108,17 +2557,47 @@ function Slider({ value, min = 0, max = 100, step = 1, onValueChange, className,
 var STAINLESS_DENSITY = 8e3;
 var STAINLESS_LABEL = "Aço inox";
 var MM3_TO_M3 = 1e9;
+/** Área da face da chapa, mm². Disco usa π r². */
+function sheetFaceAreaMm2(sheet) {
+	if (sheet.kind === "disc") {
+		const r = Math.max(0, sheet.width) / 2;
+		return Math.PI * r * r;
+	}
+	return Math.max(0, sheet.width) * Math.max(0, sheet.length);
+}
 /** Massa da chapa inteira, kg. */
 function sheetMassKg(sheet, density = STAINLESS_DENSITY) {
-	const w = Math.max(0, sheet.width);
-	const l = Math.max(0, sheet.length);
+	const area = sheetFaceAreaMm2(sheet);
 	const t = Math.max(0, sheet.thickness);
-	if (!Number.isFinite(w * l * t * density)) return 0;
-	return w * l * t * density / MM3_TO_M3;
+	if (!Number.isFinite(area * t * density)) return 0;
+	return area * t * density / MM3_TO_M3;
 }
-/** Espessura em mm a partir da massa conhecida da chapa. */
-function thicknessFromMassKg(width, length, massKg, density = STAINLESS_DENSITY) {
-	const denom = Math.max(0, width) * Math.max(0, length) * density;
+/** Massa a partir da área da face, kg. Mesma densidade comercial da chapa. */
+function massFromAreaKg(areaMm2, thicknessMm, density = STAINLESS_DENSITY) {
+	const a = Math.max(0, areaMm2);
+	const t = Math.max(0, thicknessMm);
+	if (!Number.isFinite(a * t * density)) return 0;
+	return a * t * density / MM3_TO_M3;
+}
+/** Peso para leitura de chão de fábrica: g abaixo de 1 kg. */
+function formatKg(kg) {
+	if (!Number.isFinite(kg) || kg <= 0) return "—";
+	if (kg < 1) {
+		const g = kg * 1e3;
+		const digits = g < 10 ? 1 : 0;
+		return `${g.toLocaleString("pt-BR", {
+			maximumFractionDigits: digits,
+			minimumFractionDigits: 0
+		})} g`;
+	}
+	const digits = kg >= 100 ? 1 : 2;
+	return `${kg.toLocaleString("pt-BR", {
+		maximumFractionDigits: digits,
+		minimumFractionDigits: 0
+	})} kg`;
+}
+function thicknessFromMassKg(width, length, massKg, density = STAINLESS_DENSITY, kind = "rect") {
+	const denom = (kind === "disc" ? Math.PI * (Math.max(0, width) / 2) ** 2 : Math.max(0, width) * Math.max(0, length)) * density;
 	if (denom <= 0 || !Number.isFinite(massKg) || massKg <= 0) return 0;
 	const t = massKg * MM3_TO_M3 / denom;
 	if (!Number.isFinite(t) || t < 0) return 0;
@@ -3387,6 +3866,7 @@ function makePlate(sheet, jobs = []) {
 	return {
 		id: plateId(),
 		sheet: {
+			kind: sheet.kind ?? "rect",
 			width: sheet.width,
 			length: sheet.length,
 			thickness: sheet.thickness
@@ -3396,6 +3876,7 @@ function makePlate(sheet, jobs = []) {
 }
 function cloneSheet(sheet) {
 	return {
+		kind: sheet.kind ?? "rect",
 		width: sheet.width,
 		length: sheet.length,
 		thickness: sheet.thickness
@@ -3501,6 +3982,7 @@ function materializePlan(stored, plan, upToIndex) {
 }
 var STORAGE_KEY = "ninho-nest-v7";
 var DEFAULT_SHEET = {
+	kind: "rect",
 	width: 2e3,
 	length: 1250,
 	thickness: 10
@@ -3604,9 +4086,21 @@ var useNestStore = create((set) => {
 		margin: 15,
 		gap: DEFAULT_GAP,
 		setSheet: (patch) => set((s) => {
-			const sheet = {
+			let sheet = {
 				...s.sheet,
 				...patch
+			};
+			if ((sheet.kind ?? "rect") === "disc") {
+				const d = patch.width !== void 0 ? patch.width : patch.length !== void 0 ? patch.length : sheet.width;
+				sheet = {
+					...sheet,
+					kind: "disc",
+					width: d,
+					length: d
+				};
+			} else sheet = {
+				...sheet,
+				kind: "rect"
 			};
 			return {
 				...mirrors(s.plates.map((p) => p.id === s.activePlateId ? {
@@ -3753,7 +4247,7 @@ function useNestResult() {
 	const lockedPlacements = jobs.flatMap((j) => j.placements);
 	const lockedArea = jobs.reduce((s, j) => s + (j.placements[0] ? areaOfJob(j) : 0), 0);
 	const liveArea = nest.placed * plan.piece.area;
-	const sheetArea = sheet.width * sheet.length;
+	const sheetArea = sheetFaceAreaMm2(sheet);
 	const totalPlaced = lockedPlacements.length + nest.placed;
 	const totalUtilization = sheetArea > 0 ? (lockedArea + liveArea) / sheetArea : 0;
 	nest.utilization = totalUtilization;
@@ -3906,6 +4400,11 @@ var TRI_MODES = [
 		title: "Vértices"
 	}
 ];
+function jobLotKg(job, thickness) {
+	const built = buildPiece(job.input);
+	if (!built.valid) return 0;
+	return massFromAreaKg(built.piece.area * job.placements.length, thickness);
+}
 function ControlPanel() {
 	const sheet = useNestStore((s) => s.sheet);
 	const input = useNestStore((s) => s.input);
@@ -3933,9 +4432,12 @@ function ControlPanel() {
 	const nest = useNestResult();
 	const localBox = aabbOf(piece.vertices);
 	const pieceArea = piece.area;
-	const sheetArea = sheet.width * sheet.length;
+	const sheetArea = sheetFaceAreaMm2(sheet);
 	const used = nest.totalUtilization * sheetArea;
 	const waste = Math.max(0, sheetArea - used);
+	const unitKg = valid ? massFromAreaKg(pieceArea, sheet.thickness) : 0;
+	const liveKg = massFromAreaKg(pieceArea * nest.placed, sheet.thickness);
+	const plateKg = massFromAreaKg(used, sheet.thickness);
 	const up = nest.placements.filter((p) => p.pointing === "up").length;
 	const down = nest.placements.filter((p) => p.pointing === "down").length;
 	const short = nest.remainder > 0;
@@ -4009,6 +4511,49 @@ function ControlPanel() {
 						]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "flex flex-wrap gap-1",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+							type: "button",
+							variant: "chip",
+							size: "sm",
+							"data-active": (sheet.kind ?? "rect") === "rect",
+							onClick: () => setSheet({ kind: "rect" }),
+							className: "h-8 min-w-0 px-2 text-[11px] tracking-normal whitespace-nowrap",
+							children: "Retângulo"
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Button, {
+							type: "button",
+							variant: "chip",
+							size: "sm",
+							"data-active": sheet.kind === "disc",
+							onClick: () => setSheet({
+								kind: "disc",
+								width: Math.min(sheet.width, sheet.length)
+							}),
+							className: "h-8 min-w-0 px-2 text-[11px] tracking-normal whitespace-nowrap",
+							children: "Disco"
+						})]
+					}),
+					(sheet.kind ?? "rect") === "disc" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "grid grid-cols-2 gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MmField, {
+							id: "sheet-d",
+							label: "Diâmetro",
+							value: sheet.width,
+							min: 1,
+							onChange: (width) => setSheet({
+								kind: "disc",
+								width
+							}),
+							hint: "Retalho circular."
+						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MmField, {
+							id: "sheet-t",
+							label: "Espessura · Z",
+							value: sheet.thickness,
+							min: 0,
+							onChange: (thickness) => setSheet({ thickness }),
+							hint: "Piso da folga entre peças."
+						})]
+					}) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "grid grid-cols-3 gap-2",
 						children: [
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(MmField, {
@@ -4070,18 +4615,14 @@ function ControlPanel() {
 								value: sheetMassKg(sheet),
 								min: 0,
 								unit: "kg",
-								onChange: (kg) => setSheet({ thickness: thicknessFromMassKg(sheet.width, sheet.length, kg) }),
+								onChange: (kg) => setSheet({ thickness: thicknessFromMassKg(sheet.width, sheet.length, kg, void 0, sheet.kind ?? "rect") }),
 								hint: "Chapa inteira."
 							})
 						]
 					}),
-					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: "text-xs text-faint",
-						children: [
-							"Recuo 1:1 em mm nos quatro lados. Máx. ",
-							formatMm(marginCap),
-							" mm."
-						]
+						children: (sheet.kind ?? "rect") === "disc" ? `Recuo radial 1:1 em mm. Máx. ${formatMm(marginCap)} mm.` : `Recuo 1:1 em mm nos quatro lados. Máx. ${formatMm(marginCap)} mm.`
 					})
 				]
 			}),
@@ -4214,6 +4755,15 @@ function ControlPanel() {
 						value: quantity,
 						onChange: setQuantity
 					}),
+					valid && unitKg > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
+						className: "font-mono text-[11px] tabular-nums text-faint",
+						children: [
+							formatKg(unitKg),
+							" un.",
+							nest.placed > 0 ? ` · ${formatKg(liveKg)} neste lote` : "",
+							nest.lockedCount > 0 ? ` · ${formatKg(plateKg)} na chapa` : ""
+						]
+					}) : null,
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 						className: "font-mono text-xs tracking-widest text-fg",
 						children: patternPreview(nest.placements, 2) || "—"
@@ -4271,7 +4821,8 @@ function ControlPanel() {
 												dim,
 												" · ",
 												job.placements.length,
-												" pç"
+												" pç",
+												jobLotKg(job, sheet.thickness) > 0 ? ` · ${formatKg(jobLotKg(job, sheet.thickness))}` : ""
 											]
 										})]
 									}),
@@ -4349,6 +4900,10 @@ function ControlPanel() {
 								v: formatArea(pieceArea)
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
+								k: "Peso un.",
+								v: formatKg(unitKg)
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
 								k: "AABB local",
 								v: `${formatMm(aabbWidth(localBox))} × ${formatMm(aabbHeight(localBox))}`
 							}),
@@ -4367,6 +4922,10 @@ function ControlPanel() {
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
 								k: "Área usada",
 								v: formatArea(used)
+							}),
+							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
+								k: "Peso na chapa",
+								v: formatKg(plateKg)
 							}),
 							/* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, {
 								k: "Sobra da chapa",
@@ -4900,28 +5459,36 @@ function pathPoly(ctx, cam, verts) {
 	}
 	ctx.closePath();
 }
+function pathDisc(ctx, cam, cx, cy, r) {
+	const c = toScreen(cam, cx, cy);
+	ctx.beginPath();
+	ctx.arc(c.x, c.y, Math.max(.5, Math.abs(r) * cam.scale), 0, Math.PI * 2);
+}
 function drawGrid(ctx, cam, sheet) {
 	const minor = cam.scale * 50 >= 10 ? 50 : 0;
 	const major = cam.scale * 100 >= 12 ? 100 : cam.scale * 200 >= 12 ? 200 : 500;
-	const tl = toScreen(cam, 0, sheet.length);
-	const br = toScreen(cam, sheet.width, 0);
+	const W = sheet.kind === "disc" ? sheet.width : sheet.width;
+	const H = sheet.kind === "disc" ? sheet.width : sheet.length;
+	const tl = toScreen(cam, 0, H);
+	const br = toScreen(cam, W, 0);
 	ctx.save();
 	ctx.beginPath();
-	ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+	if (sheet.kind === "disc") pathDisc(ctx, cam, W / 2, W / 2, W / 2);
+	else ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
 	ctx.clip();
 	if (minor) {
 		ctx.strokeStyle = C.gridMinor;
 		ctx.lineWidth = 1;
 		ctx.beginPath();
-		for (let x = 0; x <= sheet.width + .01; x += minor) {
+		for (let x = 0; x <= W + .01; x += minor) {
 			const a = toScreen(cam, x, 0);
-			const b = toScreen(cam, x, sheet.length);
+			const b = toScreen(cam, x, H);
 			ctx.moveTo(a.x + .5, a.y);
 			ctx.lineTo(b.x + .5, b.y);
 		}
-		for (let y = 0; y <= sheet.length + .01; y += minor) {
+		for (let y = 0; y <= H + .01; y += minor) {
 			const a = toScreen(cam, 0, y);
-			const b = toScreen(cam, sheet.width, y);
+			const b = toScreen(cam, W, y);
 			ctx.moveTo(a.x, a.y + .5);
 			ctx.lineTo(b.x, b.y + .5);
 		}
@@ -4930,15 +5497,15 @@ function drawGrid(ctx, cam, sheet) {
 	ctx.strokeStyle = C.gridMajor;
 	ctx.lineWidth = 1;
 	ctx.beginPath();
-	for (let x = 0; x <= sheet.width + .01; x += major) {
+	for (let x = 0; x <= W + .01; x += major) {
 		const a = toScreen(cam, x, 0);
-		const b = toScreen(cam, x, sheet.length);
+		const b = toScreen(cam, x, H);
 		ctx.moveTo(a.x + .5, a.y);
 		ctx.lineTo(b.x + .5, b.y);
 	}
-	for (let y = 0; y <= sheet.length + .01; y += major) {
+	for (let y = 0; y <= H + .01; y += major) {
 		const a = toScreen(cam, 0, y);
-		const b = toScreen(cam, sheet.width, y);
+		const b = toScreen(cam, W, y);
 		ctx.moveTo(a.x, a.y + .5);
 		ctx.lineTo(b.x, b.y + .5);
 	}
@@ -4946,6 +5513,26 @@ function drawGrid(ctx, cam, sheet) {
 	ctx.restore();
 }
 function drawSheet(ctx, cam, sheet) {
+	if (sheet.kind === "disc") {
+		const D = sheet.width;
+		const c = toScreen(cam, D / 2, D / 2);
+		const r = D / 2 * cam.scale;
+		const lip = 5;
+		ctx.fillStyle = C.sheetLip;
+		ctx.beginPath();
+		ctx.arc(c.x + lip, c.y + lip, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.fillStyle = C.sheet;
+		ctx.beginPath();
+		ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.strokeStyle = "rgba(236,234,228,0.10)";
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.arc(c.x, c.y, Math.max(.5, r - .5), 0, Math.PI * 2);
+		ctx.stroke();
+		return;
+	}
 	const origin = toScreen(cam, 0, 0);
 	const topRight = toScreen(cam, sheet.width, sheet.length);
 	const w = topRight.x - origin.x;
@@ -4969,6 +5556,45 @@ function drawSheet(ctx, cam, sheet) {
 }
 function drawKeepout(ctx, cam, sheet, margin) {
 	if (margin <= 0) return;
+	if (sheet.kind === "disc") {
+		const D = sheet.width;
+		const c = toScreen(cam, D / 2, D / 2);
+		const rOut = D / 2 * cam.scale;
+		const rIn = Math.max(0, D / 2 - margin) * cam.scale;
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(c.x, c.y, rOut, 0, Math.PI * 2);
+		if (rIn > .5) ctx.arc(c.x, c.y, rIn, 0, Math.PI * 2, true);
+		ctx.clip();
+		ctx.fillStyle = C.keepout;
+		ctx.fill();
+		ctx.restore();
+		if (rIn > .5) {
+			ctx.strokeStyle = C.keepoutLine;
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			ctx.arc(c.x, c.y, rIn, 0, Math.PI * 2);
+			ctx.stroke();
+		}
+		if (margin * cam.scale >= 12) {
+			ctx.fillStyle = C.ink;
+			ctx.strokeStyle = C.dimLine;
+			ctx.lineWidth = 1;
+			ctx.font = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			const outer = toScreen(cam, D / 2, 0);
+			const inner = toScreen(cam, D / 2, margin);
+			ctx.beginPath();
+			ctx.moveTo(outer.x, outer.y);
+			ctx.lineTo(inner.x, inner.y);
+			ctx.stroke();
+			ctx.fillText(formatMm(margin), (outer.x + inner.x) / 2 + 14, (outer.y + inner.y) / 2);
+			ctx.textAlign = "left";
+			ctx.textBaseline = "alphabetic";
+		}
+		return;
+	}
 	const origin = toScreen(cam, 0, 0);
 	const topRight = toScreen(cam, sheet.width, sheet.length);
 	const w = topRight.x - origin.x;
@@ -5026,7 +5652,7 @@ function drawKeepout(ctx, cam, sheet, margin) {
 	ctx.textBaseline = "alphabetic";
 }
 function drawAxes(ctx, cam, sheet) {
-	const len = Math.min(sheet.width, sheet.length) * .1;
+	const len = (sheet.kind === "disc" ? sheet.width : Math.min(sheet.width, sheet.length)) * .1;
 	const o = toScreen(cam, 0, 0);
 	const x = toScreen(cam, len, 0);
 	const y = toScreen(cam, 0, len);
@@ -5049,15 +5675,21 @@ function drawAxes(ctx, cam, sheet) {
 	ctx.fillText("Y", y.x - 4, y.y - 8);
 	ctx.fillStyle = C.dim;
 	ctx.font = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
-	const midX = toScreen(cam, sheet.width / 2, 0);
-	const midY = toScreen(cam, 0, sheet.length / 2);
 	ctx.textAlign = "center";
-	ctx.fillText(`${sheet.width} mm`, midX.x, o.y + 22);
-	ctx.save();
-	ctx.translate(midY.x - 22, midY.y);
-	ctx.rotate(-Math.PI / 2);
-	ctx.fillText(`${sheet.length} mm`, 0, 0);
-	ctx.restore();
+	if (sheet.kind === "disc") {
+		const mid = toScreen(cam, sheet.width / 2, 0);
+		const o2 = toScreen(cam, 0, 0);
+		ctx.fillText(`Ø ${sheet.width} mm`, mid.x, o2.y + 22);
+	} else {
+		const midX = toScreen(cam, sheet.width / 2, 0);
+		const midY = toScreen(cam, 0, sheet.length / 2);
+		ctx.fillText(`${sheet.width} mm`, midX.x, o.y + 22);
+		ctx.save();
+		ctx.translate(midY.x - 22, midY.y);
+		ctx.rotate(-Math.PI / 2);
+		ctx.fillText(`${sheet.length} mm`, 0, 0);
+		ctx.restore();
+	}
 	ctx.textAlign = "left";
 }
 function drawNested(ctx, cam, piece, showIndex, role, jobIndex = 0) {
@@ -5116,7 +5748,8 @@ function NestCanvas() {
 		w: 0,
 		h: 0,
 		sw: 0,
-		sl: 0
+		sl: 0,
+		kind: "rect"
 	});
 	const pointersRef = (0, import_react.useRef)(/* @__PURE__ */ new Map());
 	const panRef = (0, import_react.useRef)(null);
@@ -5148,7 +5781,7 @@ function NestCanvas() {
 		if (!ctx) return;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		const prev = sizeRef.current;
-		const sheetChanged = prev.sw !== sheet.width || prev.sl !== sheet.length;
+		const sheetChanged = prev.sw !== sheet.width || prev.sl !== sheet.length || prev.kind !== (sheet.kind ?? "rect");
 		const sizeChanged = prev.w !== w || prev.h !== h;
 		const fitted = fitCamera(w, h, sheet);
 		fittedRef.current = fitted;
@@ -5158,7 +5791,8 @@ function NestCanvas() {
 			w,
 			h,
 			sw: sheet.width,
-			sl: sheet.length
+			sl: sheet.length,
+			kind: sheet.kind ?? "rect"
 		};
 		const cam = camRef.current;
 		ctx.fillStyle = C.well;
@@ -5417,12 +6051,7 @@ function Workbench() {
 					children: [/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "rounded-md bg-bg/80 px-2.5 py-1.5 font-mono text-xs tabular-nums text-muted shadow-[var(--shadow-border)]",
 						children: [
-							formatMm(sheet.width),
-							" × ",
-							formatMm(sheet.length),
-							" × ",
-							formatMm(sheet.thickness),
-							" mm",
+							sheet.kind === "disc" ? `Ø ${formatMm(sheet.width)} × ${formatMm(sheet.thickness)} mm` : `${formatMm(sheet.width)} × ${formatMm(sheet.length)} × ${formatMm(sheet.thickness)} mm`,
 							nest.plateCount > 1 ? ` · chapa ${nest.plateIndex + 1}/${nest.plateCount}` : "",
 							margin > 0 ? ` · borda ${formatMm(margin)}` : "",
 							gap > 0 ? ` · folga ${formatMm(gap)}` : ""

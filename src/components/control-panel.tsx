@@ -6,19 +6,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { aabbHeight, aabbOf, aabbWidth, formatArea, formatMm } from "@/lib/nest/geometry";
-import { sheetMassKg, thicknessFromMassKg, STAINLESS_LABEL } from "@/lib/nest/sheet-mass";
-import { MAX_POLY_VERTS, FLANGE_PRESETS, POLY_PRESETS, SHAPE_META, WING_PRESETS, pieceDimLabel, shapeMeta, vertexLabel } from "@/lib/nest/shapes";
+import { sheetMassKg, thicknessFromMassKg, STAINLESS_LABEL, sheetFaceAreaMm2, massFromAreaKg, formatKg } from "@/lib/nest/sheet-mass";
+import { MAX_POLY_VERTS, FLANGE_PRESETS, POLY_PRESETS, SHAPE_META, WING_PRESETS, buildPiece, pieceDimLabel, shapeMeta, vertexLabel } from "@/lib/nest/shapes";
 import { MAX_JOBS, MAX_PLATES } from "@/lib/nest/store";
 import { maxSheetMargin, patternPreview } from "@/lib/nest/tessellate";
 import { useDerivedPiece, useNestResult, useNestStore } from "@/lib/nest/store";
 import { buildNestExport, nestExportFilename, nestExportToCsv } from "@/lib/nest/export-nest";
-import type { PieceInput, TriangleMode } from "@/lib/nest/types";
+import type { NestJob, PieceInput, TriangleMode } from "@/lib/nest/types";
 
 const TRI_MODES: { id: TriangleMode; label: string; title: string }[] = [
   { id: "base-height", label: "Base×alt.", title: "Base × altura" },
   { id: "right", label: "Catetos", title: "Catetos" },
   { id: "vertices", label: "Vértices", title: "Vértices" },
 ];
+
+function jobLotKg(job: NestJob, thickness: number): number {
+  const built = buildPiece(job.input);
+  if (!built.valid) return 0;
+  return massFromAreaKg(built.piece.area * job.placements.length, thickness);
+}
 
 export function ControlPanel() {
   const sheet = useNestStore((s) => s.sheet);
@@ -48,9 +54,12 @@ export function ControlPanel() {
 
   const localBox = aabbOf(piece.vertices);
   const pieceArea = piece.area;
-  const sheetArea = sheet.width * sheet.length;
+  const sheetArea = sheetFaceAreaMm2(sheet);
   const used = nest.totalUtilization * sheetArea;
   const waste = Math.max(0, sheetArea - used);
+  const unitKg = valid ? massFromAreaKg(pieceArea, sheet.thickness) : 0;
+  const liveKg = massFromAreaKg(pieceArea * nest.placed, sheet.thickness);
+  const plateKg = massFromAreaKg(used, sheet.thickness);
   const up = nest.placements.filter((p) => p.pointing === "up").length;
   const down = nest.placements.filter((p) => p.pointing === "down").length;
   const short = nest.remainder > 0;
@@ -112,83 +121,73 @@ export function ControlPanel() {
           {nest.virtual ? " · remanescente — as medidas desta chapa são independentes." : "."} O
           que não cabe segue na próxima.
         </p>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <label className="text-[11px] font-medium text-muted-foreground">
-              Forma da chapa
-            </label>
-            <select
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-              value={sheet.shape}
-              onChange={(e) => {
-                const shape = e.target.value as "rectangle" | "circle";
-
-                if (shape === "circle") {
-                  const diameter =
-                    sheet.diameter ?? Math.min(sheet.width, sheet.length);
-
-                  setSheet({
-                    shape,
-                    diameter,
-                    width: diameter,
-                    length: diameter,
-                  });
-                } else {
-                  setSheet({
-                    shape,
-                    width: sheet.width || 2000,
-                    length: sheet.length || 1250,
-                  });
-                }
-              }}
-            >
-              <option value="rectangle">Retangular</option>
-              <option value="circle">Circular</option>
-            </select>
-          </div>
-
-          {sheet.shape === "circle" ? (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            type="button"
+            variant="chip"
+            size="sm"
+            data-active={(sheet.kind ?? "rect") === "rect"}
+            onClick={() => setSheet({ kind: "rect" })}
+            className="h-8 min-w-0 px-2 text-[11px] tracking-normal whitespace-nowrap"
+          >
+            Retângulo
+          </Button>
+          <Button
+            type="button"
+            variant="chip"
+            size="sm"
+            data-active={sheet.kind === "disc"}
+            onClick={() => setSheet({ kind: "disc", width: Math.min(sheet.width, sheet.length) })}
+            className="h-8 min-w-0 px-2 text-[11px] tracking-normal whitespace-nowrap"
+          >
+            Disco
+          </Button>
+        </div>
+        {(sheet.kind ?? "rect") === "disc" ? (
+          <div className="grid grid-cols-2 gap-2">
             <MmField
-              id="sheet-diameter"
-              label="Di?metro"
-              value={sheet.diameter ?? Math.min(sheet.width, sheet.length)}
+              id="sheet-d"
+              label="Diâmetro"
+              value={sheet.width}
               min={1}
-              onChange={(diameter) =>
-                setSheet({
-                  diameter,
-                  width: diameter,
-                  length: diameter,
-                })
-              }
+              onChange={(width) => setSheet({ kind: "disc", width })}
+              hint="Retalho circular."
             />
-          ) : (
-            <>
-              <MmField
-                id="sheet-w"
-                label="Largura ? X"
-                value={sheet.width}
-                min={1}
-                onChange={(width) => setSheet({ width })}
-              />
-              <MmField
-                id="sheet-l"
-                label="Comprimento ? Y"
-                value={sheet.length}
-                min={1}
-                onChange={(length) => setSheet({ length })}
-              />
-            </>
-          )}
-
+            <MmField
+              id="sheet-t"
+              label="Espessura · Z"
+              value={sheet.thickness}
+              min={0}
+              onChange={(thickness) => setSheet({ thickness })}
+              hint="Piso da folga entre peças."
+            />
+          </div>
+        ) : (
+        <div className="grid grid-cols-3 gap-2">
+          <MmField
+            id="sheet-w"
+            label="Largura · X"
+            value={sheet.width}
+            min={1}
+            onChange={(width) => setSheet({ width })}
+          />
+          <MmField
+            id="sheet-l"
+            label="Comprimento · Y"
+            value={sheet.length}
+            min={1}
+            onChange={(length) => setSheet({ length })}
+          />
           <MmField
             id="sheet-t"
-            label="Espessura ? Z"
+            label="Espessura · Z"
             value={sheet.thickness}
             min={0}
             onChange={(thickness) => setSheet({ thickness })}
-            hint="Piso da folga entre pe?as."
+            hint="Piso da folga entre peças."
           />
         </div>
+        )}
         <div className="grid grid-cols-3 gap-2">
           <div className="flex min-w-0 flex-col gap-1.5">
             <MmField
@@ -222,12 +221,24 @@ export function ControlPanel() {
             value={sheetMassKg(sheet)}
             min={0}
             unit="kg"
-            onChange={(kg) => setSheet({ thickness: thicknessFromMassKg(sheet.width, sheet.length, kg) })}
+            onChange={(kg) =>
+              setSheet({
+                thickness: thicknessFromMassKg(
+                  sheet.width,
+                  sheet.length,
+                  kg,
+                  undefined,
+                  sheet.kind ?? "rect",
+                ),
+              })
+            }
             hint="Chapa inteira."
           />
         </div>
         <p className="text-xs text-faint">
-          Recuo 1:1 em mm nos quatro lados. Máx. {formatMm(marginCap)} mm.
+          {(sheet.kind ?? "rect") === "disc"
+            ? `Recuo radial 1:1 em mm. Máx. ${formatMm(marginCap)} mm.`
+            : `Recuo 1:1 em mm nos quatro lados. Máx. ${formatMm(marginCap)} mm.`}
         </p>
       </section>
 
@@ -369,6 +380,13 @@ export function ControlPanel() {
           value={quantity}
           onChange={setQuantity}
         />
+        {valid && unitKg > 0 ? (
+          <p className="font-mono text-[11px] tabular-nums text-faint">
+            {formatKg(unitKg)} un.
+            {nest.placed > 0 ? ` · ${formatKg(liveKg)} neste lote` : ""}
+            {nest.lockedCount > 0 ? ` · ${formatKg(plateKg)} na chapa` : ""}
+          </p>
+        ) : null}
         <p className="font-mono text-xs tracking-widest text-fg">
           {patternPreview(nest.placements, 2) || "—"}
         </p>
@@ -413,6 +431,9 @@ export function ControlPanel() {
                     <span className="block truncate text-xs text-fg">{job.name}</span>
                     <span className="block truncate font-mono text-[10px] tabular-nums text-faint">
                       {dim} · {job.placements.length} pç
+                      {jobLotKg(job, sheet.thickness) > 0
+                        ? ` · ${formatKg(jobLotKg(job, sheet.thickness))}`
+                        : ""}
                     </span>
                   </span>
                   <Button
@@ -460,6 +481,7 @@ export function ControlPanel() {
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums">
           <Row k="Área da peça" v={formatArea(pieceArea)} />
+          <Row k="Peso un." v={formatKg(unitKg)} />
           <Row
             k="AABB local"
             v={`${formatMm(aabbWidth(localBox))} × ${formatMm(aabbHeight(localBox))}`}
@@ -468,6 +490,7 @@ export function ControlPanel() {
           <Row k="Folga laser" v={`${formatMm(gap)} mm`} />
           <Row k="Aproveitamento" v={`${formatMm(nest.totalUtilization * 100, 1)} %`} />
           <Row k="Área usada" v={formatArea(used)} />
+          <Row k="Peso na chapa" v={formatKg(plateKg)} />
           <Row k="Sobra da chapa" v={formatArea(waste)} />
         </dl>
         <div className="rounded-lg bg-raised p-3 font-mono text-[11px] leading-relaxed text-muted shadow-[var(--shadow-border)]">

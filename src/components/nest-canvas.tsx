@@ -54,30 +54,39 @@ function pathPoly(ctx: CanvasRenderingContext2D, cam: Camera, verts: readonly Po
   ctx.closePath();
 }
 
+function pathDisc(ctx: CanvasRenderingContext2D, cam: Camera, cx: number, cy: number, r: number) {
+  const c = toScreen(cam, cx, cy);
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, Math.max(0.5, Math.abs(r) * cam.scale), 0, Math.PI * 2);
+}
+
 function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   const minor = cam.scale * 50 >= 10 ? 50 : 0;
   const major = cam.scale * 100 >= 12 ? 100 : cam.scale * 200 >= 12 ? 200 : 500;
-  const tl = toScreen(cam, 0, sheet.length);
-  const br = toScreen(cam, sheet.width, 0);
+  const W = sheet.kind === "disc" ? sheet.width : sheet.width;
+  const H = sheet.kind === "disc" ? sheet.width : sheet.length;
+  const tl = toScreen(cam, 0, H);
+  const br = toScreen(cam, W, 0);
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+  if (sheet.kind === "disc") pathDisc(ctx, cam, W / 2, W / 2, W / 2);
+  else ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
   ctx.clip();
 
   if (minor) {
     ctx.strokeStyle = C.gridMinor;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let x = 0; x <= sheet.width + 0.01; x += minor) {
+    for (let x = 0; x <= W + 0.01; x += minor) {
       const a = toScreen(cam, x, 0);
-      const b = toScreen(cam, x, sheet.length);
+      const b = toScreen(cam, x, H);
       ctx.moveTo(a.x + 0.5, a.y);
       ctx.lineTo(b.x + 0.5, b.y);
     }
-    for (let y = 0; y <= sheet.length + 0.01; y += minor) {
+    for (let y = 0; y <= H + 0.01; y += minor) {
       const a = toScreen(cam, 0, y);
-      const b = toScreen(cam, sheet.width, y);
+      const b = toScreen(cam, W, y);
       ctx.moveTo(a.x, a.y + 0.5);
       ctx.lineTo(b.x, b.y + 0.5);
     }
@@ -87,15 +96,15 @@ function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   ctx.strokeStyle = C.gridMajor;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let x = 0; x <= sheet.width + 0.01; x += major) {
+  for (let x = 0; x <= W + 0.01; x += major) {
     const a = toScreen(cam, x, 0);
-    const b = toScreen(cam, x, sheet.length);
+    const b = toScreen(cam, x, H);
     ctx.moveTo(a.x + 0.5, a.y);
     ctx.lineTo(b.x + 0.5, b.y);
   }
-  for (let y = 0; y <= sheet.length + 0.01; y += major) {
+  for (let y = 0; y <= H + 0.01; y += major) {
     const a = toScreen(cam, 0, y);
-    const b = toScreen(cam, sheet.width, y);
+    const b = toScreen(cam, W, y);
     ctx.moveTo(a.x, a.y + 0.5);
     ctx.lineTo(b.x, b.y + 0.5);
   }
@@ -104,34 +113,32 @@ function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
 }
 
 function drawSheet(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
+  if (sheet.kind === "disc") {
+    const D = sheet.width;
+    const c = toScreen(cam, D / 2, D / 2);
+    const r = (D / 2) * cam.scale;
+    const lip = 5;
+    ctx.fillStyle = C.sheetLip;
+    ctx.beginPath();
+    ctx.arc(c.x + lip, c.y + lip, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = C.sheet;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(236,234,228,0.10)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, Math.max(0.5, r - 0.5), 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+
   const origin = toScreen(cam, 0, 0);
   const topRight = toScreen(cam, sheet.width, sheet.length);
   const w = topRight.x - origin.x;
   const h = origin.y - topRight.y;
   const lip = 5;
-
-  if (sheet.shape === "circle") {
-    const diameter = sheet.diameter ?? Math.min(sheet.width, sheet.length);
-    const radius = (diameter * cam.scale) / 2;
-    const center = toScreen(cam, diameter / 2, diameter / 2);
-
-    ctx.fillStyle = C.sheetLip;
-    ctx.beginPath();
-    ctx.arc(center.x + lip, center.y + lip, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = C.sheet;
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(236,234,228,0.10)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, Math.max(0, radius - 0.5), 0, Math.PI * 2);
-    ctx.stroke();
-    return;
-  }
 
   ctx.fillStyle = C.sheetLip;
   ctx.beginPath();
@@ -141,6 +148,7 @@ function drawSheet(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   ctx.lineTo(origin.x + w + lip, origin.y - h + lip);
   ctx.lineTo(origin.x + w, origin.y - h);
   ctx.lineTo(origin.x + w, origin.y);
+  ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle = C.sheet;
@@ -150,58 +158,47 @@ function drawSheet(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
   ctx.lineWidth = 1;
   ctx.strokeRect(origin.x + 0.5, origin.y - h + 0.5, w - 1, h - 1);
 }
+
 function drawKeepout(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet, margin: number) {
   if (margin <= 0) return;
 
-  const px = margin * cam.scale;
-
-  if (sheet.shape === "circle") {
-    const diameter = sheet.diameter ?? Math.min(sheet.width, sheet.length);
-    const radius = (diameter * cam.scale) / 2;
-    const innerRadius = Math.max(0, radius - px);
-    const center = toScreen(cam, diameter / 2, diameter / 2);
-
+  if (sheet.kind === "disc") {
+    const D = sheet.width;
+    const c = toScreen(cam, D / 2, D / 2);
+    const rOut = (D / 2) * cam.scale;
+    const rIn = Math.max(0, D / 2 - margin) * cam.scale;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-    ctx.arc(center.x, center.y, innerRadius, 0, Math.PI * 2, true);
-    ctx.clip("evenodd");
+    ctx.arc(c.x, c.y, rOut, 0, Math.PI * 2);
+    if (rIn > 0.5) ctx.arc(c.x, c.y, rIn, 0, Math.PI * 2, true);
+    ctx.clip();
     ctx.fillStyle = C.keepout;
     ctx.fill();
     ctx.restore();
-
-    if (innerRadius > 0.5) {
+    if (rIn > 0.5) {
       ctx.strokeStyle = C.keepoutLine;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(center.x, center.y, innerRadius, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, rIn, 0, Math.PI * 2);
       ctx.stroke();
     }
-
-    if (px < 12) return;
-
-    const label = formatMm(margin);
-    ctx.fillStyle = C.ink;
-    ctx.strokeStyle = C.dimLine;
-    ctx.lineWidth = 1;
-    ctx.font = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    const bottomOuter = toScreen(cam, diameter / 2, 0);
-    const bottomInner = toScreen(cam, diameter / 2, margin);
-    ctx.beginPath();
-    ctx.moveTo(bottomOuter.x, bottomOuter.y);
-    ctx.lineTo(bottomInner.x, bottomInner.y);
-    ctx.stroke();
-    ctx.fillText(
-      label,
-      (bottomOuter.x + bottomInner.x) / 2 + 14,
-      (bottomOuter.y + bottomInner.y) / 2,
-    );
-
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
+    if (margin * cam.scale >= 12) {
+      ctx.fillStyle = C.ink;
+      ctx.strokeStyle = C.dimLine;
+      ctx.lineWidth = 1;
+      ctx.font = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const outer = toScreen(cam, D / 2, 0);
+      const inner = toScreen(cam, D / 2, margin);
+      ctx.beginPath();
+      ctx.moveTo(outer.x, outer.y);
+      ctx.lineTo(inner.x, inner.y);
+      ctx.stroke();
+      ctx.fillText(formatMm(margin), (outer.x + inner.x) / 2 + 14, (outer.y + inner.y) / 2);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
     return;
   }
 
@@ -217,6 +214,7 @@ function drawKeepout(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet, m
   const innerTr = toScreen(cam, margin + innerW, margin + innerH);
   const iw = innerTr.x - innerBl.x;
   const ih = innerBl.y - innerTr.y;
+  const px = margin * cam.scale;
 
   ctx.save();
   ctx.beginPath();
@@ -270,7 +268,8 @@ function drawKeepout(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet, m
 }
 
 function drawAxes(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
-  const len = Math.min(sheet.width, sheet.length) * 0.1;
+  const span = sheet.kind === "disc" ? sheet.width : Math.min(sheet.width, sheet.length);
+  const len = span * 0.1;
   const o = toScreen(cam, 0, 0);
   const x = toScreen(cam, len, 0);
   const y = toScreen(cam, 0, len);
@@ -296,15 +295,21 @@ function drawAxes(ctx: CanvasRenderingContext2D, cam: Camera, sheet: Sheet) {
 
   ctx.fillStyle = C.dim;
   ctx.font = "500 10px 'IBM Plex Mono', ui-monospace, monospace";
-  const midX = toScreen(cam, sheet.width / 2, 0);
-  const midY = toScreen(cam, 0, sheet.length / 2);
   ctx.textAlign = "center";
-  ctx.fillText(`${sheet.width} mm`, midX.x, o.y + 22);
-  ctx.save();
-  ctx.translate(midY.x - 22, midY.y);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText(`${sheet.length} mm`, 0, 0);
-  ctx.restore();
+  if (sheet.kind === "disc") {
+    const mid = toScreen(cam, sheet.width / 2, 0);
+    const o2 = toScreen(cam, 0, 0);
+    ctx.fillText(`Ø ${sheet.width} mm`, mid.x, o2.y + 22);
+  } else {
+    const midX = toScreen(cam, sheet.width / 2, 0);
+    const midY = toScreen(cam, 0, sheet.length / 2);
+    ctx.fillText(`${sheet.width} mm`, midX.x, o.y + 22);
+    ctx.save();
+    ctx.translate(midY.x - 22, midY.y);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(`${sheet.length} mm`, 0, 0);
+    ctx.restore();
+  }
   ctx.textAlign = "left";
 }
 
@@ -376,7 +381,7 @@ export function NestCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const camRef = useRef<Camera | null>(null);
   const fittedRef = useRef<Camera | null>(null);
-  const sizeRef = useRef({ w: 0, h: 0, sw: 0, sl: 0 });
+  const sizeRef = useRef({ w: 0, h: 0, sw: 0, sl: 0, kind: "rect" as string });
   const pointersRef = useRef(new Map<number, Point>());
   const panRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const pinchRef = useRef<{
@@ -414,7 +419,7 @@ export function NestCanvas() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const prev = sizeRef.current;
-    const sheetChanged = prev.sw !== sheet.width || prev.sl !== sheet.length;
+    const sheetChanged = prev.sw !== sheet.width || prev.sl !== sheet.length || prev.kind !== (sheet.kind ?? "rect");
     const sizeChanged = prev.w !== w || prev.h !== h;
     const fitted = fitCamera(w, h, sheet);
     fittedRef.current = fitted;
@@ -424,7 +429,7 @@ export function NestCanvas() {
     } else if (sizeChanged) {
       camRef.current = keepWorldCenter(camRef.current, prev.w, prev.h, w, h);
     }
-    sizeRef.current = { w, h, sw: sheet.width, sl: sheet.length };
+    sizeRef.current = { w, h, sw: sheet.width, sl: sheet.length, kind: sheet.kind ?? "rect" };
     const cam = camRef.current;
 
     ctx.fillStyle = C.well;

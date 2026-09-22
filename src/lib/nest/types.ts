@@ -28,16 +28,16 @@ export type AABB = {
   maxY: number;
 };
 
+export type SheetKind = "rect" | "disc";
+
 export type Sheet = {
-  /** Forma f?sica da chapa. */
-  shape?: "rectangle" | "circle";
-  /** Largura da chapa no eixo X, mm. Mantida para compatibilidade do nesting. */
+  /** Retângulo industrial ou retalho em disco. Ausente = retângulo. */
+  kind?: SheetKind;
+  /** Largura no eixo X, mm. No disco, o diâmetro. */
   width: number;
-  /** Comprimento da chapa no eixo Y, mm. Mantido para compatibilidade do nesting. */
+  /** Comprimento no eixo Y, mm. No disco, igual ao diâmetro. */
   length: number;
-  /** Di?metro da chapa circular, mm. */
-  diameter?: number;
-  /** Espessura no eixo Z, mm. Piso da folga laser entre pe?as. */
+  /** Espessura no eixo Z, mm. Piso da folga laser entre peças. */
   thickness: number;
 };
 

@@ -1,0 +1,141 @@
+﻿import { existsSync, mkdirSync, rmSync, cpSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const root = resolve(".");
+const dist = join(root, "dist");
+const vercelStatic = join(root, ".vercel", "output", "static");
+const androidDir = join(root, "android");
+const apkSource = join(androidDir, "app", "build", "outputs", "apk", "debug", "app-debug.apk");
+const apkTarget = join(root, "TB-Nesting.apk");
+
+function fail(message) {
+  console.error(`\n[BUILD ANDROID] ERRO: ${message}`);
+  process.exit(1);
+}
+
+function run(command, args, cwd = root) {
+  console.log(`\n[BUILD ANDROID] > ${command} ${args.join(" ")}`);
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
+
+  if (result.status !== 0) {
+    fail(`Comando falhou: ${command} ${args.join(" ")}`);
+  }
+}
+
+function requireFile(file, label) {
+  if (!existsSync(file)) {
+    fail(`${label} não encontrado: ${file}`);
+  }
+}
+
+console.log("\n========================================");
+console.log(" TorqBoss Nesting - BUILD ANDROID");
+console.log("========================================");
+
+requireFile(join(root, "vite.config.ts"), "vite.config.ts");
+requireFile(join(root, "capacitor.config.ts"), "capacitor.config.ts");
+requireFile(join(root, "android", "gradlew.bat"), "Gradle Wrapper");
+
+console.log("\n[1/7] Limpando artefatos antigos...");
+rmSync(dist, { recursive: true, force: true });
+rmSync(join(root, ".vercel", "output"), { recursive: true, force: true });
+
+console.log("\n[2/7] Gerando build novo do TanStack/Grok...");
+run(".\\node_modules\\.bin\\vite.cmd", ["build"]);
+
+requireFile(
+  join(vercelStatic, "_shell.html"),
+  "Shell SPA novo (.vercel/output/static/_shell.html)"
+);
+
+const assetsDir = join(vercelStatic, "assets");
+requireFile(assetsDir, "Diretório de assets novo");
+
+const assets = readdirSync(assetsDir);
+
+const indexJs = assets.find((x) => /^index-.*\.js$/.test(x));
+const routesJs = assets.find((x) => /^routes-.*\.js$/.test(x));
+const stylesCss = assets.find((x) => /^styles-.*\.css$/.test(x));
+
+if (!indexJs || !routesJs || !stylesCss) {
+  fail(
+    `Build novo não produziu o conjunto esperado de assets.\n` +
+    `index=${indexJs ?? "NÃO ENCONTRADO"}\n` +
+    `routes=${routesJs ?? "NÃO ENCONTRADO"}\n` +
+    `styles=${stylesCss ?? "NÃO ENCONTRADO"}`
+  );
+}
+
+console.log("\n[3/7] Criando DIST exclusivo para Capacitor...");
+mkdirSync(dist, { recursive: true });
+
+cpSync(
+  join(vercelStatic, "_shell.html"),
+  join(dist, "index.html")
+);
+
+cpSync(assetsDir, join(dist, "assets"), { recursive: true });
+
+for (const file of ["favicon.svg"]) {
+  const source = join(vercelStatic, file);
+  if (existsSync(source)) {
+    cpSync(source, join(dist, file));
+  }
+}
+
+const grokDir = join(vercelStatic, "__grok");
+if (existsSync(grokDir)) {
+  cpSync(grokDir, join(dist, "__grok"), { recursive: true });
+}
+
+requireFile(join(dist, "index.html"), "dist/index.html");
+requireFile(join(dist, "assets", indexJs), "JS principal novo no dist");
+requireFile(join(dist, "assets", routesJs), "JS de rotas novo no dist");
+requireFile(join(dist, "assets", stylesCss), "CSS novo no dist");
+
+console.log(`   index:  ${indexJs}`);
+console.log(`   routes: ${routesJs}`);
+console.log(`   styles: ${stylesCss}`);
+
+console.log("\n[4/7] Sincronizando Capacitor...");
+run("npx", ["cap", "sync", "android"]);
+
+console.log("\n[5/7] Verificando arquivos dentro do Android...");
+
+const androidPublic = join(androidDir, "app", "src", "main", "assets", "public");
+
+requireFile(join(androidPublic, "index.html"), "index.html Android");
+requireFile(join(androidPublic, "assets", indexJs), "JS principal dentro do Android");
+requireFile(join(androidPublic, "assets", routesJs), "JS de rotas dentro do Android");
+requireFile(join(androidPublic, "assets", stylesCss), "CSS dentro do Android");
+
+console.log("   OK: Android recebeu exatamente os assets deste build.");
+
+console.log("\n[6/7] Compilando APK...");
+run(".\\gradlew.bat", ["assembleDebug"], androidDir);
+
+requireFile(apkSource, "APK gerado pelo Gradle");
+
+console.log("\n[7/7] Criando TB-Nesting.apk...");
+cpSync(apkSource, apkTarget);
+
+const apkSize = statSync(apkTarget).size;
+
+if (apkSize < 1000000) {
+  fail(`APK suspeito: apenas ${apkSize} bytes.`);
+}
+
+console.log("\n========================================");
+console.log(" BUILD ANDROID CONCLUÍDO COM SUCESSO");
+console.log("========================================");
+console.log(`APK: ${apkTarget}`);
+console.log(`Tamanho: ${apkSize.toLocaleString("pt-BR")} bytes`);
+console.log(`Build JS: ${indexJs}`);
+console.log(`Build Routes: ${routesJs}`);
+console.log(`Build CSS: ${stylesCss}`);
+console.log("========================================\n");

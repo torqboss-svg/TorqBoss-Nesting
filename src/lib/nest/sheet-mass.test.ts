@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { sheetMassKg, thicknessFromMassKg, STAINLESS_DENSITY } from "./sheet-mass.ts";
+import { sheetMassKg, thicknessFromMassKg, STAINLESS_DENSITY, massFromAreaKg, formatKg } from "./sheet-mass.ts";
 
 describe("sheet mass (stainless)", () => {
   it("2000 × 1250 × 10 mm is 200 kg at 8 g/cm³", () => {
@@ -30,5 +30,23 @@ describe("sheet mass (stainless)", () => {
     const a = sheetMassKg({ width: 2000, length: 1250, thickness: 10 });
     const b = sheetMassKg({ width: 2000, length: 1250, thickness: 20 });
     assert.ok(Math.abs(b - 2 * a) < 1e-9);
+  });
+
+  it("disc Ø 700 × 10 mm uses π r² at 8 g/cm³", () => {
+    const kg = sheetMassKg({ kind: "disc", width: 700, length: 700, thickness: 10 });
+    const expected = (Math.PI * 350 * 350 * 10 * 8000) / 1_000_000_000;
+    assert.ok(Math.abs(kg - expected) < 1e-9);
+    const t = thicknessFromMassKg(700, 700, kg, STAINLESS_DENSITY, "disc");
+    assert.equal(t, 10);
+  });
+
+  it("piece mass is area × thickness at the same density", () => {
+    const triangle = massFromAreaKg(60_000, 10);
+    assert.ok(Math.abs(triangle - 4.8) < 1e-9);
+    const disc = massFromAreaKg(Math.PI * 140 * 140, 10);
+    assert.ok(Math.abs(disc - ((Math.PI * 140 * 140 * 10 * 8000) / 1_000_000_000)) < 1e-9);
+    assert.equal(massFromAreaKg(0, 10), 0);
+    assert.equal(formatKg(4.8), "4,8 kg");
+    assert.equal(formatKg(0.492), "492 g");
   });
 });
