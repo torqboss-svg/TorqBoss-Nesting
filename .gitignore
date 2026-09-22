@@ -1,2 +1,17 @@
+﻿node_modules/
 
-node_modules/
+# Builds gerados
+.vercel/
+dist/
+
+# APKs gerados
+*.apk
+
+# Artefatos temporários
+artifacts/
+
+# Backups locais de scripts/configuração
+*.before-*
+
+# Arquivos temporários do ambiente
+.grok/status
